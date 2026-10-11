@@ -48,8 +48,9 @@ shifts automatically, but you can still shift by hand.
 
 - **3 cars**: an FWD hot hatch (Class C), an RWD V8 coupe (Class B) and a
   GT3 race car with downforce (Class A).
-- **2 circuits**: *Harbor Point GP* (2.9 km, fast and flowing) and *Red
-  Canyon Ring* (2.2 km, technical).
+- **3 circuits**: *Harbor Point GP* (2.9 km, fast and flowing), *Red
+  Canyon Ring* (2.2 km, technical) and *Laguna Seca* (3.6 km, modelled on
+  the real Monterey circuit).
 - **Forza-style driving line**: the line ahead of you is green where you can
   accelerate, yellow where you should lift, and red where you need to brake.
   The colors are worked out live from your speed.
@@ -63,6 +64,14 @@ shifts automatically, but you can still shift by hand.
   procedurally.
 - Installable as a PWA (web app), with landscape lock and full screen where
   the browser supports them.
+
+### About the Laguna Seca layout
+
+It is a hand-drawn approximation of the real circuit's 11 turns (the fast
+T1, the Andretti hairpin, the climb through T3–T6, the Corkscrew, Rainey
+Curve and the final double right), scaled to the real 3.6 km lap. It is not
+built from surveyed GPS data, and the game world is flat, so the Corkscrew's
+~18 m drop isn't modelled yet.
 
 ## Physics
 
