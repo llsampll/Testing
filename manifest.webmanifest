@@ -1,0 +1,11 @@
+{
+  "name": "Apex Circuit",
+  "short_name": "Apex",
+  "description": "Mobile racing game with sim-style physics.",
+  "start_url": ".",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#0b0e14",
+  "theme_color": "#0b0e14",
+  "icons": [{ "src": "icons/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }]
+}
