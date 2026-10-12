@@ -1,5 +1,5 @@
 // Offline cache so the game works without a connection once installed.
-const CACHE = 'apex-circuit-v4';
+const CACHE = 'apex-circuit-v5';
 const ASSETS = [
   './', 'index.html', 'css/style.css', 'manifest.webmanifest', 'icons/icon.svg',
   'js/main.js', 'js/game.js', 'js/race.js', 'js/ai.js', 'js/input.js', 'js/audio.js',

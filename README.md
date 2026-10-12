@@ -61,9 +61,10 @@ shifts automatically, but you can still shift by hand.
   those are estimates typical of a 2004 F1 car. In the game it does 0–100 km/h
   in about 2.6 s, reaches about 342 km/h, stops from 100 km/h in about 19 m,
   and pulls over 4 g in fast corners.
-- **3 circuits**: *Harbor Point GP* (2.9 km, fast and flowing), *Red
-  Canyon Ring* (2.2 km, technical) and *Laguna Seca* (3.6 km with 54 m of
-  elevation, traced from the real Monterey circuit map).
+- **4 circuits**: *Harbor Point GP* (2.9 km, fast and flowing), *Red
+  Canyon Ring* (2.2 km, technical), *Laguna Seca* (3.6 km with 54 m of
+  elevation, traced from the real Monterey circuit map) and *Monza* (5.8 km,
+  measured off an aerial view of the park).
 - **Forza-style driving line**: the line ahead of you is green where you can
   accelerate, yellow where you should lift, and red where you need to brake.
   The colors are worked out live from your speed.
@@ -113,6 +114,38 @@ about 18%) and on down to the final corner. The height profile is a hand-built
 approximation from published figures, not survey data, and it is defined by a
 short list of `[distance, height]` anchors in `js/track/trackData.js`, so it's
 easy to refine. Any track can use the same `elevation` field.
+
+### About the Monza layout
+
+The real lap is 5.793 km, and the corners were measured off an aerial view of
+the park. Each corner is stored as a point and a radius in
+`js/track/trackData.js`, and the centerline is built from those straights and
+arcs:
+
+| Corner | Radius |
+| --- | --- |
+| Rettifilo chicane | 19 m |
+| Curva Grande | 250 m |
+| Roggia chicane | 32 m |
+| Lesmo 1 | 100 m |
+| Lesmo 2 | 85 m |
+| Ascari | 95–140 m |
+| Parabolica | 95 m opening to 170 m |
+
+The tightest radii were opened up a little from the photo so the corner
+speeds line up with real ones. The lap runs clockwise. The park is nearly
+level, so the track is modelled flat.
+
+The scenery follows the aerial view too:
+
+- **The old banked oval:** it shares the main straight, banks steeply round
+  both ends and crosses over the circuit on a bridge between Lesmo and Ascari.
+- **Paddock:** a large paddock behind the long pit building, with rows of
+  transporters.
+- **Grandstands:** placed from the official seating map.
+- **The park:** dense woodland, mown fields, an orchard and a plantation
+  inside the oval, and a tree-lined avenue.
+- **Around the park:** a golf course to the south and town edges to the north.
 
 ### 3D car models
 

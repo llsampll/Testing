@@ -32,6 +32,35 @@ test('Laguna Seca: real lap length and ~55 m of relief with a Corkscrew-style dr
   assert.ok(Math.abs(t.h[0] - t.h[t.count - 1]) < 0.3);
 });
 
+test('Monza: real lap length, clockwise, flat, with long straights and tight chicanes', () => {
+  const t = new Track(TRACKS.find((d) => d.id === 'monza'));
+  assert.ok(Math.abs(t.length - 5793) < 15, `length ${t.length}`);
+  let area = 0;
+  for (let i = 0; i < t.count; i++) {
+    const j = (i + 1) % t.count;
+    area += t.px[i] * t.pz[j] - t.px[j] * t.pz[i];
+  }
+  // x right, z down (screen-style): a positive shoelace sum runs clockwise.
+  assert.ok(area > 0, 'runs clockwise');
+  assert.ok(t.relief < 0.01, `relief ${t.relief}`);
+  // Longest run with (almost) no curvature: the main straight, about a kilometre.
+  let run = 0;
+  let longest = 0;
+  for (let k = 0; k < 2 * t.count; k++) {
+    run = Math.abs(t.curvature[k % t.count]) < 1 / 1500 ? run + t.spacing : 0;
+    longest = Math.max(longest, run);
+  }
+  assert.ok(longest > 950, `longest straight ${longest.toFixed(0)} m`);
+  const tightest = (a, b) => {
+    let m = 0;
+    for (let s = a; s < b; s += t.spacing) m = Math.max(m, Math.abs(t.curvature[Math.round(s / t.spacing) % t.count]));
+    return 1 / m;
+  };
+  assert.ok(tightest(700, 900) < 30, 'Rettifilo is a tight chicane');
+  assert.ok(tightest(1100, 1550) > 150, 'Curva Grande is a fast sweep');
+  assert.ok(tightest(1950, 2100) < 45, 'Roggia is a chicane');
+});
+
 test('terrain mesh and road share one surface (no grass through the road)', () => {
   const t = new Track(TRACKS.find((d) => d.id === 'laguna'));
   const T = t.ensureTerrain(150);

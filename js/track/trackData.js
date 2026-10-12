@@ -3,6 +3,59 @@
 // the direction of travel follows the point order. Optional `elevation` anchors
 // ([distance m, height m]) are interpolated around the lap.
 
+/**
+ * Closed outline through corner points [x, z, radius], each corner rounded
+ * with an arc of that radius (0 = a point on a straight), sampled every
+ * `step` meters starting at the first point.
+ */
+function roundedPolygon(corners, step = 7) {
+  const n = corners.length;
+  const path = [];
+  for (let i = 0; i < n; i++) {
+    const [px, pz, r] = corners[i];
+    if (!r) {
+      path.push([px, pz]);
+      continue;
+    }
+    const [ax, az] = corners[(i - 1 + n) % n];
+    const [bx, bz] = corners[(i + 1) % n];
+    const lu = Math.hypot(ax - px, az - pz);
+    const lw = Math.hypot(bx - px, bz - pz);
+    const [ux, uz] = [(ax - px) / lu, (az - pz) / lu];
+    const [wx, wz] = [(bx - px) / lw, (bz - pz) / lw];
+    const ang = Math.acos(Math.min(1, Math.max(-1, ux * wx + uz * wz)));
+    const t = r / Math.tan(ang / 2);
+    const lb = Math.hypot(ux + wx, uz + wz);
+    const cx = px + ((ux + wx) / lb) * (r / Math.sin(ang / 2));
+    const cz = pz + ((uz + wz) / lb) * (r / Math.sin(ang / 2));
+    const a1 = Math.atan2(pz + uz * t - cz, px + ux * t - cx);
+    const a2 = Math.atan2(pz + wz * t - cz, px + wx * t - cx);
+    const d = ((((a2 - a1 + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI;
+    const m = Math.max(2, Math.ceil(Math.abs(d) * r));
+    for (let j = 0; j <= m; j++) {
+      const q = a1 + (d * j) / m;
+      path.push([cx + r * Math.cos(q), cz + r * Math.sin(q)]);
+    }
+  }
+  const cum = [0];
+  for (let i = 1; i <= path.length; i++) {
+    const [ax, az] = path[i - 1];
+    const [bx, bz] = path[i % path.length];
+    cum.push(cum[i - 1] + Math.hypot(bx - ax, bz - az));
+  }
+  const total = cum[cum.length - 1];
+  const out = [];
+  let j = 0;
+  for (let s = 0; s < total - step / 2; s += step) {
+    while (cum[j + 1] < s) j++;
+    const w = (s - cum[j]) / (cum[j + 1] - cum[j] || 1);
+    const [ax, az] = path[j];
+    const [bx, bz] = path[(j + 1) % path.length];
+    out.push([ax + (bx - ax) * w, az + (bz - az) * w]);
+  }
+  return out;
+}
+
 export const TRACKS = [
   {
     id: 'harbor',
@@ -91,6 +144,86 @@ export const TRACKS = [
     ],
     // [distance from start line (m), height above the lowest point (m)] - about 54 m of total relief.
     elevation: [[0, 0], [202, 3], [459, 8], [600, 10], [756, 14], [1008, 27], [1270, 32], [1521, 39], [1700, 47], [1889, 54], [2100, 52.5], [2308, 49.5], [2400, 47], [2431, 46], [2468, 40.5], [2540, 33], [2620, 29], [2693, 26], [2820, 18], [2947, 10], [3226, 1], [3450, 0.3]],
+  },
+  {
+    id: 'monza',
+    name: 'Monza',
+    description: 'The Temple of Speed: flat-out straights, the Rettifilo and Roggia chicanes, Lesmo, Ascari and the Parabolica.',
+    width: 14,
+    runoff: 8,
+    scale: 1,
+    theme: { grass: 0x5f8a3e, sky: 0x9cc8ee, fog: 0xc9d6d8, ground: 0x5e7a42, hills: 0x4c6a3c },
+    // Corners measured off an aerial view of the park and scaled to the real
+    // 5.793 km lap: [x, z, corner radius m]. Runs clockwise.
+    points: roundedPolygon([
+      [0, 0, 0], [761, -31, 19], [771, 9, 19], [918, -45, 150], // Rettifilo
+      [1355, -66, 250], // Curva Grande
+      [1490, 608, 32], [1530, 630, 32], // Roggia
+      [1694, 1008, 100], [1384, 1049, 85], // Lesmo 1 and 2
+      [806, 471, 400], // Serraglio
+      [578, 300, 95], [503, 315, 95], [414, 263, 140], // Ascari
+      [-636, 293, 95], [-636, 27, 170], // Parabolica
+    ]),
+    // The park is nearly level; a flat height profile still gives the
+    // detailed landscape a terrain to sit on.
+    elevation: [[0, 0], [2900, 0]],
+    scenery: {
+      seed: 11,
+      palette: { green: [92, 118, 52], dry: [116, 126, 60], verge: [84, 116, 48], forest: [40, 60, 30], forest2: [52, 72, 36] },
+      sand: 0.15,
+      forest: { scale: 210, lo: 0.2, hi: 0.36, inside: 0.85 },
+      trees: 1.5,
+      treeScale: 1.7,
+      forestNear: true,
+      pines: 0.45,
+      forestRange: 520,
+      olives: 0,
+      trails: 0,
+      lake: false,
+      lawns: false,
+      serviceRoads: false,
+      bridges: 3,
+      distantHills: false,
+      paddock: { side: -1, s: 30, length: 380, depth: 180, truckRows: 4 },
+      pit: { s: -34, length: 290 },
+      // [arc length m, side (+1 = left of travel), length m]
+      stands: [
+        [-90, 1, 160], [90, 1, 90], [230, 1, 120], [390, 1, 70], [540, 1, 70], [690, 1, 90],
+        [860, -1, 60], [2110, -1, 70], [3350, -1, 50], [3860, -1, 60],
+        [4150, -1, 170], [4380, -1, 130], [4560, 1, 200], [4780, 1, 120],
+        [5050, -1, 160], [5420, -1, 80], [5430, 1, 80],
+      ],
+      // The 1955 high-speed oval: shares the main straight, banks round both
+      // ends and crosses over the circuit between Lesmo and Ascari.
+      oval: {
+        width: 12,
+        bank: 6,
+        points: [[-396, 19], [-532, 23], [-634, 25], [-690, 31], [-747, 50], [-783, 84], [-809, 146], [-821, 225], [-823, 304], [-817, 395], [-801, 463], [-775, 525], [-741, 580], [-696, 624], [-639, 653], [-572, 669], [-487, 675], [-215, 672], [125, 669], [464, 666], [634, 662], [690, 656], [747, 638], [804, 601], [849, 556], [889, 503], [917, 452], [934, 384], [939, 304], [930, 248], [905, 186], [866, 123], [821, 75], [770, 35], [724, 10], [679, -10], [623, -18], [351, -8], [11, 7]],
+      },
+      fields: [
+        { kind: 'lawn', poly: [[-481, 338], [-306, 336], [-303, 650], [-479, 653]] },
+        { kind: 'orchard', poly: [[-303, 336], [-147, 334], [-145, 646], [-301, 650]] },
+        { kind: 'lawn', poly: [[-141, 334], [136, 329], [138, 644], [-139, 646]] },
+        { kind: 'plantation', poly: [[140, 329], [441, 325], [444, 642], [143, 644]] },
+        { kind: 'lawn', poly: [[-634, -109], [-487, -109], [-487, -58], [-634, -58]] },
+        { kind: 'lawn', poly: [[939, -216], [1098, -216], [1098, -92], [939, -92]] },
+      ],
+      roads: [
+        { points: [[238, 249], [577, 244], [939, 240], [1324, 234]], width: 7 },
+        { points: [[-340, 299], [-340, 672]], width: 6, trees: true },
+        { points: [[-487, -43], [11, -46], [690, -62], [1087, -71]], width: 6 },
+        { points: [[1087, -71], [1211, -92], [1404, -80], [1517, -1]], width: 6 },
+      ],
+      // Golf course south of the park, fairways fanning across it.
+      golf: { poly: [[-1053, 714], [690, 698], [917, 757], [1064, 961], [1132, 1209], [-1053, 1209]], holes: 16, heading: -0.5 },
+      // Town edges to the north.
+      town: [
+        { poly: [[-1121, -431], [-747, -431], [-747, -324], [-1121, -324]] },
+        { poly: [[-328, -431], [11, -431], [11, -363], [-328, -363]] },
+        { poly: [[441, -431], [917, -431], [917, -312], [441, -312]] },
+        { poly: [[1426, -431], [1795, -431], [1795, -58], [1426, -58]] },
+      ],
+    },
   },
 ];
 

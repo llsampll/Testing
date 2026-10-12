@@ -1,8 +1,9 @@
 // Detailed surroundings for tracks with a `scenery` config: a painted ground
-// map (dry grass, sandy patches, forest floor, service roads, dirt trails),
-// dense forest outside the circuit, olive trees in the infield, a paddock
-// with transporters and hospitality units, a pond, octagonal lawns and
-// footbridges over the track.
+// map (grass, sandy patches, forest floor, service roads, dirt trails), forest
+// around the circuit, a paddock with transporters and hospitality units and
+// footbridges over the track. Optional features, each switched on by the
+// config: olive trees, a pond and octagonal lawns (Laguna Seca), and an old
+// banked oval, mown fields, orchards, a golf course and a town (Monza).
 //
 // Everything is deterministic for a given track, so the scenery is the same
 // on every visit.
@@ -51,6 +52,45 @@ const smooth = (a, b, x) => {
   return t * t * (3 - 2 * t);
 };
 const mix = (a, b, t) => a + (b - a) * t;
+
+/** Spans [x0, x1] of a polygon ([[x, z], ...]) along the row at z (even-odd rule). */
+function polyRow(poly, z) {
+  const xs = [];
+  for (let i = 0; i < poly.length; i++) {
+    const [ax, az] = poly[i];
+    const [bx, bz] = poly[(i + 1) % poly.length];
+    if (az <= z !== bz <= z) xs.push(ax + ((z - az) / (bz - az)) * (bx - ax));
+  }
+  xs.sort((a, b) => a - b);
+  const runs = [];
+  for (let i = 0; i + 1 < xs.length; i += 2) runs.push([xs[i], xs[i + 1]]);
+  return runs;
+}
+
+function inPoly(poly, x, z) {
+  return polyRow(poly, z).some(([a, b]) => x >= a && x <= b);
+}
+
+/** Closed Catmull-Rom loop through `pts`, sampled about every `step` metres. */
+function loopCurve(pts, step) {
+  const out = [];
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i - 1 + n) % n];
+    const p1 = pts[i];
+    const p2 = pts[(i + 1) % n];
+    const p3 = pts[(i + 2) % n];
+    const m = Math.max(1, Math.ceil(Math.hypot(p2[0] - p1[0], p2[1] - p1[1]) / step));
+    for (let k = 0; k < m; k++) {
+      const t = k / m;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      const f = (a, b, c, d) => 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+      out.push([f(p0[0], p1[0], p2[0], p3[0]), f(p0[1], p1[1], p2[1], p3[1])]);
+    }
+  }
+  return out;
+}
 
 // ---- Distance / inside field ---------------------------------------------------
 
@@ -117,6 +157,7 @@ class Field {
           }
         }
     }
+    this.blocked = new Uint8Array(N);
     this.dist = new Float32Array(N);
     for (let k = 0; k < N; k++) this.dist[k] = Math.sqrt(d2(k, sx[k], sz[k]));
 
@@ -138,6 +179,42 @@ class Field {
         for (let i = i0; i <= i1; i++) this.inside[j * res + i] = 1;
       }
     }
+  }
+
+  /** Mark the cells within `r` of a point as taken (no trees there). */
+  block(x, z, r) {
+    const res = this.res;
+    const i0 = Math.max(0, Math.floor((x - r - this.x0) / this.cell));
+    const i1 = Math.min(res - 1, Math.floor((x + r - this.x0) / this.cell));
+    const j0 = Math.max(0, Math.floor((z - r - this.z0) / this.cell));
+    const j1 = Math.min(res - 1, Math.floor((z + r - this.z0) / this.cell));
+    for (let j = j0; j <= j1; j++)
+      for (let i = i0; i <= i1; i++) {
+        const cx = this.x0 + (i + 0.5) * this.cell;
+        const cz = this.z0 + (j + 0.5) * this.cell;
+        if ((cx - x) ** 2 + (cz - z) ** 2 <= (r + this.cell * 0.71) ** 2) this.blocked[j * res + i] = 1;
+      }
+  }
+
+  /** Mark the cells inside a polygon as taken. */
+  blockPoly(poly) {
+    const res = this.res;
+    for (let j = 0; j < res; j++) {
+      const z = this.z0 + (j + 0.5) * this.cell;
+      const runs = polyRow(poly, z);
+      for (const [a, b] of runs) {
+        const i0 = Math.max(0, Math.ceil((a - this.x0) / this.cell - 0.5));
+        const i1 = Math.min(res - 1, Math.floor((b - this.x0) / this.cell - 0.5));
+        for (let i = i0; i <= i1; i++) this.blocked[j * res + i] = 1;
+      }
+    }
+  }
+
+  blockedAt(x, z) {
+    const i = Math.floor((x - this.x0) / this.cell);
+    const j = Math.floor((z - this.z0) / this.cell);
+    if (i < 0 || j < 0 || i >= this.res || j >= this.res) return false;
+    return this.blocked[j * this.res + i] === 1;
   }
 
   /** Bilinear sample of one of the grids. */
@@ -178,6 +255,16 @@ const COL = {
   lawnEdge: '#55992f',
   lakeBed: '#5f5c3e',
   bank: '#c2a272',
+  lawnField: '#728f42',
+  orchard: '#74803f',
+  plantation: '#6d683a',
+  town: '#a9a293',
+  rough: '#617f36',
+  fairway: '#78994a',
+  fairwayStripe: '#7fa14f',
+  green2: '#8ab352',
+  bunker: '#e6d6a6',
+  concrete: '#b5b2a8',
 };
 
 /** Box placement in the paddock / bridge mesh: x, z, yaw, width, height, depth, colour. */
@@ -234,10 +321,13 @@ export class Landscape {
     this.opts = opts;
     this.lowQ = opts.quality === 'low';
     this.seed = this.cfg.seed ?? 1;
+    this.col = { ...COL, ...(this.cfg.palette ?? {}) };
     this.wd = track.wallDist;
     this.field = new Field(track, T, this.lowQ ? 320 : 448);
     this.keepOut = []; // areas trees stay out of: { x, z, r } circles
+    this.extraTrees = []; // planted rows: { x, z, s, kind }
     this._planSites();
+    this._planFeatures();
   }
 
   // ---- Site planning -----------------------------------------------------------
@@ -256,11 +346,12 @@ export class Landscape {
     this.safeDist = wd + 1 + 1.6 * this.T.cell;
 
     // Paddock: inside the loop, behind the pit garages on the start straight.
-    const f = track.frameAt(track.length - 75);
-    const side = this.cfg.paddockSide ?? 1; // +1 = left of travel
-    const L = 150;
+    const pc = this.cfg.paddock ?? {};
+    const f = track.frameAt((track.length + (pc.s ?? -75)) % track.length);
+    const side = pc.side ?? 1; // +1 = left of travel
+    const L = pc.length ?? 150;
     const v0 = wd + 24;
-    let D = 100;
+    let D = pc.depth ?? 100;
     const ok = (D) => {
       for (let u = -L / 2; u <= L / 2; u += 10)
         for (let v = v0; v <= v0 + D; v += 10) {
@@ -270,7 +361,7 @@ export class Landscape {
       return true;
     };
     while (D > 30 && !ok(D)) D -= 10;
-    this.paddock = D > 30 ? { f, side, L, v0, D } : null;
+    this.paddock = D > 30 ? { f, side, L, v0, D, rows: pc.truckRows ?? 1 } : null;
     if (this.paddock) {
       const [x, z] = this._at(f, 0, side * (v0 + D / 2));
       this.paddock.cx = x;
@@ -278,7 +369,7 @@ export class Landscape {
       this.keepOut.push({ x, z, r: Math.hypot(L / 2, D / 2) + 8 });
       // Three octagonal lawns in a row beyond the paddock.
       this.lawns = [];
-      for (const u of [-34, 0, 34]) {
+      for (const u of this.cfg.lawns === false ? [] : [-34, 0, 34]) {
         const [lx, lz] = this._at(f, u, side * (v0 + D + 26));
         if (F.distAt(lx, lz) > wd + 30 && F.insideAt(lx, lz) === (side > 0)) {
           this.lawns.push({ x: lx, z: lz, r: 14, yaw: Math.atan2(f.tx, f.tz) });
@@ -292,8 +383,9 @@ export class Landscape {
 
     // Pond: the most open spot of the infield that the paddock doesn't use.
     let best = null;
+    if (this.cfg.lake === false) best = { room: 0 };
     const res = F.res;
-    for (let j = 2; j < res - 2; j += 2)
+    for (let j = 2; j < res - 2 && this.cfg.lake !== false; j += 2)
       for (let i = 2; i < res - 2; i += 2) {
         const k = j * res + i;
         if (!F.inside[k]) continue;
@@ -327,7 +419,119 @@ export class Landscape {
       if (!straight || markers.some((m) => Math.abs(m.s - s) < 18)) continue;
       this.bridges.push(s);
       last = s;
-      if (this.bridges.length >= 4) break;
+      if (this.bridges.length >= (this.cfg.bridges ?? 4)) break;
+    }
+  }
+
+  /** Optional features from the config: banked oval, fields, golf course, town and roads. */
+  _planFeatures() {
+    const F = this.field;
+    const cfg = this.cfg;
+    const wd = this.wd;
+    const rand = rng(this.seed * 53 + 1);
+    const thin = this.lowQ ? 1.5 : 1; // sparser planted rows on low quality
+
+    if (cfg.oval) {
+      const pts = loopCurve(cfg.oval.points, 4);
+      this.oval = { pts, half: (cfg.oval.width ?? 12) / 2, bank: cfg.oval.bank ?? 6 };
+      for (const [x, z] of pts) F.block(x, z, this.oval.half + 5);
+    }
+
+    for (const fl of cfg.fields ?? []) {
+      F.blockPoly(fl.poly);
+      if (fl.kind !== 'orchard' && fl.kind !== 'plantation') continue;
+      const gap = (fl.kind === 'orchard' ? 10 : 11) * thin;
+      const xs = fl.poly.map((p) => p[0]);
+      const zs = fl.poly.map((p) => p[1]);
+      for (let z = Math.min(...zs) + gap / 2; z < Math.max(...zs); z += gap)
+        for (let x = Math.min(...xs) + gap / 2; x < Math.max(...xs); x += gap) {
+          const tx = x + (rand() - 0.5) * gap * 0.3;
+          const tz = z + (rand() - 0.5) * gap * 0.3;
+          if (!inPoly(fl.poly, tx, tz) || rand() < 0.12) continue;
+          this.extraTrees.push(fl.kind === 'orchard' ? { x: tx, z: tz, s: 0.55 + rand() * 0.2, kind: 2 } : { x: tx, z: tz, s: 0.7 + rand() * 0.3, kind: 1 });
+        }
+    }
+
+    // Golf course: winding fairways with greens and bunkers, tree belts between.
+    if (cfg.golf) {
+      const poly = cfg.golf.poly;
+      const xs = poly.map((p) => p[0]);
+      const zs = poly.map((p) => p[1]);
+      const ok = (x, z) => inPoly(poly, x, z) && F.distAt(x, z) > wd + 30;
+      this.golf = [];
+      let tries = 0;
+      while (this.golf.length < (cfg.golf.holes ?? 14) && tries++ < 400) {
+        const x0 = mix(Math.min(...xs), Math.max(...xs), rand());
+        const z0 = mix(Math.min(...zs), Math.max(...zs), rand());
+        if (!ok(x0, z0) || F.blockedAt(x0, z0)) continue;
+        const ang = (cfg.golf.heading ?? 0) + (rand() - 0.5) * 1.4;
+        const len = 200 + rand() * 220;
+        const bend = (rand() - 0.5) * 0.9;
+        const w = 42 + rand() * 18;
+        const pts = [];
+        for (let t = 0; t <= len; t += 6) {
+          const a = ang + (bend * t) / len;
+          const [px, pz] = pts.length ? pts[pts.length - 1] : [x0 - Math.cos(a) * 6, z0 - Math.sin(a) * 6];
+          pts.push([px + Math.cos(a) * 6, pz + Math.sin(a) * 6]);
+        }
+        if (!pts.every(([x, z]) => ok(x, z) && !F.blockedAt(x, z))) continue;
+        for (const [x, z] of pts) F.block(x, z, w / 2 + 4);
+        const [gx, gz] = pts[pts.length - 1];
+        const bunkers = [];
+        for (let b = 0; b < 2 + rand() * 3; b++) {
+          const a = rand() * Math.PI * 2;
+          const near = b < 2 ? [gx, gz] : pts[(rand() * pts.length) | 0];
+          const r = b < 2 ? 18 : w / 2 + 3;
+          bunkers.push({ x: near[0] + Math.cos(a) * r, z: near[1] + Math.sin(a) * r, rx: 5 + rand() * 6, rz: 3 + rand() * 4, rot: rand() * Math.PI });
+        }
+        this.golf.push({ pts, w, green: [gx, gz], bunkers });
+      }
+    }
+
+    // Town: blocks of houses with gardens.
+    this.houses = [];
+    for (const tw of cfg.town ?? []) {
+      F.blockPoly(tw.poly);
+      const xs = tw.poly.map((p) => p[0]);
+      const zs = tw.poly.map((p) => p[1]);
+      const gap = 24 * thin;
+      for (let z = Math.min(...zs) + gap / 2; z < Math.max(...zs); z += gap)
+        for (let x = Math.min(...xs) + gap / 2; x < Math.max(...xs); x += gap) {
+          if (!inPoly(tw.poly, x, z) || F.distAt(x, z) < wd + 60 || rand() < 0.3) continue;
+          const tall = rand() < 0.12;
+          this.houses.push({
+            x: x + (rand() - 0.5) * 6,
+            z: z + (rand() - 0.5) * 6,
+            w: 9 + rand() * 8,
+            d: 8 + rand() * 6,
+            h: tall ? 16 + rand() * 12 : 6 + rand() * 5,
+            yaw: (tw.yaw ?? 0) + (rand() < 0.5 ? 0 : Math.PI / 2),
+          });
+        }
+    }
+
+    // Service roads, some lined with trees.
+    for (const rd of cfg.roads ?? []) {
+      const w = rd.width ?? 6;
+      for (let i = 0; i + 1 < rd.points.length; i++) {
+        const [ax, az] = rd.points[i];
+        const [bx, bz] = rd.points[i + 1];
+        const len = Math.hypot(bx - ax, bz - az);
+        const nx = -(bz - az) / len;
+        const nz = (bx - ax) / len;
+        for (let t = 0; t <= len; t += 4) {
+          const x = mix(ax, bx, t / len);
+          const z = mix(az, bz, t / len);
+          if (F.distAt(x, z) > wd + 4) F.block(x, z, w / 2 + 2);
+        }
+        if (!rd.trees) continue;
+        for (let t = 6; t < len; t += 11 * thin)
+          for (const side of [-1, 1]) {
+            const x = mix(ax, bx, t / len) + nx * side * (w / 2 + 4);
+            const z = mix(az, bz, t / len) + nz * side * (w / 2 + 4);
+            this.extraTrees.push({ x, z, s: 0.95 + rand() * 0.2, kind: 0 });
+          }
+      }
     }
   }
 
@@ -410,12 +614,13 @@ export class Landscape {
         const ins = F.inside[k];
         tone[k] = fbm(x / 70, z / 70, this.seed + 11);
         const sr = fbm(x / 110, z / 110, this.seed + 21) * 0.7 + fbm(x / 26, z / 26, this.seed + 22) * 0.3;
-        sand[k] = smooth(0.53, 0.66, sr) * (ins ? 1 : 0.45) * smooth(wd + 3, wd + 12, d);
-        forest[k] = this._forestAt(x, z, d, ins);
+        sand[k] = (this.cfg.sand ?? 1) * smooth(0.53, 0.66, sr) * (ins ? 1 : 0.45) * smooth(wd + 3, wd + 12, d);
+        forest[k] = F.blocked[k] ? 0 : this._forestAt(x, z, d, ins);
       }
     this.forestGrid = forest;
     this.sandGrid = sand;
 
+    const C = this.col;
     const img = g.createImageData(res, res);
     const px = T.size / res;
     const rand = rng(this.seed * 977);
@@ -431,10 +636,10 @@ export class Landscape {
         const grain = 0.93 + rand() * 0.14;
         const o = (row * res + col) * 4;
         for (let c = 0; c < 3; c++) {
-          let v = mix(COL.green[c], COL.dry[c], t);
-          v = mix(v, COL.sand[c], sd);
-          v = mix(v, mix(COL.forest[c], COL.forest2[c], t), smooth(0.15, 0.6, fo));
-          v = mix(v, COL.verge[c], verge);
+          let v = mix(C.green[c], C.dry[c], t);
+          v = mix(v, C.sand[c], sd);
+          v = mix(v, mix(C.forest[c], C.forest2[c], t), smooth(0.15, 0.6, fo));
+          v = mix(v, C.verge[c], verge);
           img.data[o + c] = Math.min(255, v * grain);
         }
         img.data[o + 3] = 255;
@@ -446,8 +651,9 @@ export class Landscape {
     const k = res / T.size;
     g.setTransform(k, 0, 0, k, -T.x0 * k, -T.z0 * k);
     g.lineCap = g.lineJoin = 'round';
+    this._paintFeatures(g);
     this._paintTrails(g);
-    this._paintServiceRoads(g);
+    if (this.cfg.serviceRoads !== false) this._paintServiceRoads(g);
     this._paintPaddock(g);
     this._paintLake(g);
 
@@ -490,8 +696,9 @@ export class Landscape {
 
   /** Forest cover 0..1: dense outside the circuit, in clumps, with open fields between. */
   _forestAt(x, z, d, ins) {
-    const n = fbm(x / 150, z / 150, this.seed + 31);
-    return (ins ? 0.25 : 1) * smooth(this.wd + 10, this.wd + 40, d) * smooth(0.4, 0.52, n);
+    const fc = this.cfg.forest ?? {};
+    const n = fbm(x / (fc.scale ?? 150), z / (fc.scale ?? 150), this.seed + 31);
+    return (ins ? fc.inside ?? 0.25 : 1) * smooth(this.wd + 10, this.wd + 40, d) * smooth(fc.lo ?? 0.4, fc.hi ?? 0.52, n);
   }
 
   /** Polyline runs where `ok` holds, stroked on the ground map. */
@@ -513,7 +720,7 @@ export class Landscape {
   }
 
   _clearOf(x, z, margin) {
-    return this.keepOut.every((o) => Math.hypot(x - o.x, z - o.z) > o.r + margin);
+    return !this.field.blockedAt(x, z) && this.keepOut.every((o) => Math.hypot(x - o.x, z - o.z) > o.r + margin);
   }
 
   /** Winding dirt trails across the infield. */
@@ -525,7 +732,7 @@ export class Landscape {
     if (infield.length < 2) return;
     const cellPos = (k) => [F.x0 + ((k % F.res) + 0.5) * F.cell, F.z0 + (((k / F.res) | 0) + 0.5) * F.cell];
     const ok = (x, z) => F.insideAt(x, z) && F.distAt(x, z) > this.wd + 6 && this._clearOf(x, z, 4);
-    for (let t = 0; t < 9; t++) {
+    for (let t = 0; t < (this.cfg.trails ?? 9); t++) {
       const [ax, az] = cellPos(infield[(rand() * infield.length) | 0]);
       const [bx, bz] = cellPos(infield[(rand() * infield.length) | 0]);
       const len = Math.hypot(bx - ax, bz - az);
@@ -538,7 +745,7 @@ export class Landscape {
         const w = (noise(s / 90, t * 3.7, this.seed + 41) - 0.5) * 2 * wob * Math.sin((Math.PI * s) / len);
         pts.push([mix(ax, bx, s / len) + nx * w, mix(az, bz, s / len) + nz * w]);
       }
-      this._strokeRuns(g, pts, ok, COL.trail, 2.6 + rand());
+      this._strokeRuns(g, pts, ok, this.col.trail, 2.6 + rand());
     }
   }
 
@@ -581,7 +788,7 @@ export class Landscape {
         }
       const ok = ([x, z]) =>
         !F.insideAt(x, z) && this._clearOf(x, z, 4) && (keep >= 1 || noise(x / 260, z / 260, this.seed + seed + 3) < keep);
-      for (const [style, width] of [['#8b867c', 7.5], [COL.road, 6]]) {
+      for (const [style, width] of [['#8b867c', 7.5], [this.col.road, 6]]) {
         g.strokeStyle = style;
         g.lineWidth = width;
         g.beginPath();
@@ -610,7 +817,7 @@ export class Landscape {
     g.fillStyle = '#8e9092';
     quad(-P.L / 2 - 20, P.L / 2 + 10, this.wd + 1, P.v0);
     g.fill();
-    g.fillStyle = COL.paddock;
+    g.fillStyle = this.col.paddock;
     quad(-P.L / 2, P.L / 2, P.v0, P.v0 + P.D);
     g.fill();
     // Parking bay lines.
@@ -641,18 +848,91 @@ export class Landscape {
         g.lineTo(lw.x + Math.cos(a) * lw.r, lw.z + Math.sin(a) * lw.r);
       }
       g.closePath();
-      g.fillStyle = COL.lawn;
+      g.fillStyle = this.col.lawn;
       g.fill();
-      g.strokeStyle = COL.lawnEdge;
+      g.strokeStyle = this.col.lawnEdge;
       g.lineWidth = 1.2;
       g.stroke();
+    }
+  }
+
+  /** Fields, golf course, town ground, service roads and the oval, painted on the ground map. */
+  _paintFeatures(g) {
+    const F = this.field;
+    const cfg = this.cfg;
+    const wd = this.wd;
+    const C = this.col;
+    const path = (poly) => {
+      g.beginPath();
+      poly.forEach(([x, z], i) => (i ? g.lineTo(x, z) : g.moveTo(x, z)));
+      g.closePath();
+    };
+    for (const fl of cfg.fields ?? []) {
+      path(fl.poly);
+      g.fillStyle = fl.kind === 'lawn' ? C.lawnField : fl.kind === 'orchard' ? C.orchard : C.plantation;
+      g.fill();
+      if (fl.kind !== 'lawn') continue;
+      // Mowing stripes.
+      g.save();
+      path(fl.poly);
+      g.clip();
+      g.fillStyle = 'rgba(255,255,230,0.07)';
+      const xs = fl.poly.map((p) => p[0]);
+      const zs = fl.poly.map((p) => p[1]);
+      for (let x = Math.min(...xs); x < Math.max(...xs); x += 24) g.fillRect(x, Math.min(...zs), 12, Math.max(...zs) - Math.min(...zs));
+      g.restore();
+    }
+    for (const tw of cfg.town ?? []) {
+      path(tw.poly);
+      g.fillStyle = C.town;
+      g.fill();
+    }
+    for (const h of this.houses ?? []) {
+      g.fillStyle = 'rgba(70,90,50,0.35)'; // gardens
+      g.fillRect(h.x - h.w, h.z - h.d, h.w * 2, h.d * 2);
+    }
+    for (const hole of this.golf ?? []) {
+      for (const [style, width] of [[C.rough, hole.w + 10], [C.fairway, hole.w], [C.fairwayStripe, hole.w * 0.45]]) {
+        g.strokeStyle = style;
+        g.lineWidth = width;
+        g.beginPath();
+        hole.pts.forEach(([x, z], i) => (i ? g.lineTo(x, z) : g.moveTo(x, z)));
+        g.stroke();
+      }
+      g.fillStyle = C.green2;
+      g.beginPath();
+      g.arc(hole.green[0], hole.green[1], 15, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = C.bunker;
+      for (const b of hole.bunkers) {
+        g.beginPath();
+        g.ellipse(b.x, b.z, b.rx, b.rz, b.rot, 0, Math.PI * 2);
+        g.fill();
+      }
+    }
+    const clearOfTrack = (x, z) => F.distAt(x, z) > wd + 4;
+    for (const rd of cfg.roads ?? []) {
+      const pts = [];
+      for (let i = 0; i + 1 < rd.points.length; i++) {
+        const [ax, az] = rd.points[i];
+        const [bx, bz] = rd.points[i + 1];
+        const len = Math.hypot(bx - ax, bz - az);
+        for (let t = 0; t < len; t += 4) pts.push([mix(ax, bx, t / len), mix(az, bz, t / len)]);
+      }
+      pts.push(rd.points[rd.points.length - 1]);
+      this._strokeRuns(g, pts, clearOfTrack, '#8b867c', (rd.width ?? 6) + 1.5);
+      this._strokeRuns(g, pts, clearOfTrack, C.road, rd.width ?? 6);
+    }
+    if (this.oval) {
+      const pts = [...this.oval.pts, this.oval.pts[0]];
+      this._strokeRuns(g, pts, (x, z) => F.distAt(x, z) > wd + 1, C.concrete, this.oval.half * 2 + 2);
     }
   }
 
   _paintLake(g) {
     const L = this.lake;
     if (!L) return;
-    for (const [style, grow] of [[COL.bank, 9], [COL.lakeBed, 2]]) {
+    for (const [style, grow] of [[this.col.bank, 9], [this.col.lakeBed, 2]]) {
       g.fillStyle = style;
       g.beginPath();
       for (let i = 0; i < 64; i++) {
@@ -672,6 +952,8 @@ export class Landscape {
     const boxes = new Boxes(this.track);
     this._buildPaddock(boxes);
     this._buildBridges(boxes);
+    this._buildTown(boxes);
+    this._buildOval(root);
     if (boxes.list.length) root.add(boxes.mesh(shadows));
     this._buildTrees(root);
     if (this.lake) {
@@ -692,22 +974,208 @@ export class Landscape {
     }
   }
 
+  /** Houses: walls plus a terracotta roof slab. */
+  _buildTown(boxes) {
+    const walls = [0xf1ece0, 0xe8dfcc, 0xf6f4ee, 0xe3d3b8, 0xd9cdb6];
+    const roofs = [0xa4553a, 0xb5654a, 0x8e4a35, 0x9c9a96];
+    const rand = rng(this.seed * 71);
+    for (const h of this.houses ?? []) {
+      boxes.add(h.x, h.z, h.yaw, h.w, h.h, h.d, walls[(rand() * walls.length) | 0]);
+      const top = boxes.list[boxes.list.length - 1];
+      boxes.add(h.x, h.z, h.yaw, h.w + 0.8, 0.9, h.d + 0.8, roofs[(rand() * roofs.length) | 0], top.y + h.h);
+    }
+  }
+
+  /**
+   * The old high-speed oval: a concrete ribbon that tilts up into steep
+   * banking on the curves and rises over the circuit on a bridge where they
+   * cross. Where it runs along the circuit (the shared straight) the circuit
+   * itself stands in for it.
+   */
+  _buildOval(root) {
+    const O = this.oval;
+    if (!O) return;
+    const track = this.track;
+    const F = this.field;
+    const wd = this.wd;
+    const pts = O.pts;
+    const n = pts.length;
+    let cx = 0;
+    let cz = 0;
+    for (const [x, z] of pts) {
+      cx += x / n;
+      cz += z / n;
+    }
+    // Banking from curvature (flat on the straights).
+    const bank = new Float32Array(n);
+    for (let i = 0; i < n; i++) {
+      const [ax, az] = pts[(i - 3 + n) % n];
+      const [bx, bz] = pts[i];
+      const [qx, qz] = pts[(i + 3) % n];
+      const cross = (bx - ax) * (qz - bz) - (bz - az) * (qx - bx);
+      const k = (2 * Math.abs(cross)) / (Math.hypot(bx - ax, bz - az) * Math.hypot(qx - bx, qz - bz) * Math.hypot(qx - ax, qz - az) + 1e-9);
+      bank[i] = smooth(1 / 1200, 1 / 400, k);
+    }
+    const b2 = Float32Array.from(bank);
+    for (let i = 0; i < n; i++) {
+      let sum = 0;
+      for (let k = -8; k <= 8; k++) sum += b2[(i + k + n) % n];
+      bank[i] = sum / 17;
+    }
+    // Where it meets the circuit: long runs alongside are shared, short runs are crossings.
+    const over = pts.map(([x, z]) => F.distAt(x, z) < wd + 3);
+    const lift = new Float32Array(n);
+    const skip = new Uint8Array(n);
+    const startAt = over.findIndex((v) => !v);
+    for (let k = 0; k < n; ) {
+      const i = (startAt + k) % n;
+      if (!over[i]) {
+        k++;
+        continue;
+      }
+      let len = 0;
+      while (k + len < n && over[(startAt + k + len) % n]) len++;
+      const mid = (startAt + k + Math.floor(len / 2)) % n;
+      if (len * 4 < 70) {
+        const [mx, mz] = pts[mid];
+        const deck = track.roadY(mx, mz) + 7.5;
+        for (let j = -40; j <= 40; j++) {
+          const q = (mid + j + n) % n;
+          const [x, z] = pts[q];
+          const h = (deck - track.terrainHeight(x, z)) * smooth(30, 12, Math.abs(j) - len / 2);
+          lift[q] = Math.max(lift[q], h);
+        }
+      } else {
+        for (let j = 0; j < len; j++) skip[(startAt + k + j) % n] = 1;
+      }
+      k += len;
+    }
+    for (let i = 0; i < n; i++) if (F.distAt(...pts[i]) < wd + 1.5 && lift[i] < 5) skip[i] = 1;
+
+    const pos = [];
+    const uv = [];
+    const idx = [];
+    const rail = [];
+    const railIdx = [];
+    const quad = (list, ids, a, b, c, d, u0, u1) => {
+      const base = list.length / 3;
+      list.push(...a, ...b, ...c, ...d);
+      if (ids === idx) uv.push(u0, 0, u1, 0, u0, 1, u1, 1);
+      ids.push(base, base + 2, base + 1, base + 1, base + 2, base + 3);
+    };
+    let s = 0;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const seg = Math.hypot(pts[j][0] - pts[i][0], pts[j][1] - pts[i][1]);
+      if (skip[i] || skip[j]) {
+        s += seg;
+        continue;
+      }
+      const edge = (q) => {
+        const [x, z] = pts[q];
+        const [px, pz] = pts[(q - 1 + n) % n];
+        const [nx2, nz2] = pts[(q + 1) % n];
+        let ox = -(nz2 - pz);
+        let oz = nx2 - px;
+        const l = Math.hypot(ox, oz);
+        ox /= l;
+        oz /= l;
+        if (ox * (x - cx) + oz * (z - cz) < 0) {
+          ox = -ox;
+          oz = -oz;
+        }
+        const ix = x - ox * O.half;
+        const iz = z - oz * O.half;
+        const ex = x + ox * O.half;
+        const ez = z + oz * O.half;
+        const base = lift[q] + 0.06;
+        return {
+          inner: [ix, track.terrainHeight(ix, iz) + base, iz],
+          outer: [ex, track.terrainHeight(ex, ez) + base + O.bank * bank[q], ez],
+          innerGround: [ix, track.terrainHeight(ix, iz) - 0.3, iz],
+          outerGround: [ex, track.terrainHeight(ex, ez) - 0.3, ez],
+          overRoad: F.distAt(x, z) < wd + 2,
+        };
+      };
+      const A = edge(i);
+      const B = edge(j);
+      const u0 = s / 10;
+      const u1 = (s + seg) / 10;
+      s += seg;
+      // Running surface (faces up), then the walls underneath where it is raised.
+      quad(pos, idx, A.inner, B.inner, A.outer, B.outer, u0, u1);
+      const raisedOut = A.outer[1] - A.outerGround[1] > 0.6 || B.outer[1] - B.outerGround[1] > 0.6;
+      const raisedIn = A.inner[1] - A.innerGround[1] > 0.6 || B.inner[1] - B.innerGround[1] > 0.6;
+      const open = A.overRoad || B.overRoad; // leave the span over the circuit open
+      if (raisedOut && !open) quad(pos, idx, A.outerGround, B.outerGround, A.outer, B.outer, u0, u1);
+      if (raisedIn && !open) quad(pos, idx, A.inner, B.inner, A.innerGround, B.innerGround, u0, u1);
+      // Guard rail along the top of the banking.
+      const up = (p, h) => [p[0], p[1] + h, p[2]];
+      if (bank[i] > 0.2 || lift[i] > 1) {
+        quad(rail, railIdx, A.outer, B.outer, up(A.outer, 1.1), up(B.outer, 1.1));
+        if (lift[i] > 1) quad(rail, railIdx, A.inner, B.inner, up(A.inner, 1.1), up(B.inner, 1.1));
+      }
+    }
+    const tex = (() => {
+      const c = document.createElement('canvas');
+      c.width = c.height = 128;
+      const cg = c.getContext('2d');
+      cg.fillStyle = '#b7b4ab';
+      cg.fillRect(0, 0, 128, 128);
+      const rr = rng(this.seed + 99);
+      for (let i = 0; i < 1400; i++) {
+        const v = 150 + rr() * 60;
+        cg.fillStyle = `rgba(${v},${v},${v - 6},0.5)`;
+        cg.fillRect(rr() * 128, rr() * 128, 2, 2);
+      }
+      // Slab joints and weather streaks.
+      cg.fillStyle = 'rgba(60,60,55,0.35)';
+      cg.fillRect(0, 0, 2, 128);
+      for (let i = 0; i < 6; i++) {
+        cg.fillStyle = `rgba(80,78,70,${0.06 + rr() * 0.08})`;
+        cg.fillRect(rr() * 128, 0, 3 + rr() * 8, 128);
+      }
+      const t = new THREE.CanvasTexture(c);
+      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = 4;
+      return t;
+    })();
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
+    geo.setIndex(idx);
+    geo.computeVertexNormals();
+    const concrete = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: tex, roughness: 0.95, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 }));
+    concrete.receiveShadow = concrete.castShadow = this.opts.shadows;
+    const rg = new THREE.BufferGeometry();
+    rg.setAttribute('position', new THREE.Float32BufferAttribute(rail, 3));
+    rg.setIndex(railIdx);
+    rg.computeVertexNormals();
+    root.add(concrete, new THREE.Mesh(rg, new THREE.MeshStandardMaterial({ color: 0x8a9096, roughness: 0.5, metalness: 0.5, side: THREE.DoubleSide })));
+  }
+
   _buildPaddock(boxes) {
     const P = this.paddock;
     if (!P) return;
     const rand = rng(this.seed * 13 + 3);
     const yaw = Math.atan2(P.f.tx, P.f.tz);
     const at = (u, v) => this._at(P.f, u, P.side * v);
-    const liveries = [0xf4f4f2, 0xf4f4f2, 0xe9ebee, 0x1d1f24, 0xc8102e, 0x1f4e9c, 0xf2b705, 0x2f7d4a];
-    // Transporters backed up to the pits: trailer + cab, nose toward the paddock.
-    for (let u = -P.L / 2 + 8; u <= P.L / 2 - 8; u += 6.5) {
-      if (rand() < 0.15) continue;
-      const col = liveries[(rand() * liveries.length) | 0];
-      const [tx, tz] = at(u, P.v0 + 3 + 6.8);
-      boxes.add(tx, tz, yaw + Math.PI / 2, 2.55, 4, 13.6, col);
-      const [cx, cz] = at(u, P.v0 + 3 + 13.6 + 1.6);
-      boxes.add(cx, cz, yaw + Math.PI / 2, 2.5, 3.6, 2.4, col === 0x1d1f24 ? 0x2a2c30 : 0xf0f0ee);
+    const liveries = [0xf4f4f2, 0xf4f4f2, 0xf4f4f2, 0xe9ebee, 0xc9ccd1, 0x1d1f24, 0x1d1f24, 0xc8102e, 0x1f4e9c, 0xf2b705];
+    // Transporters backed up to the pits (more rows in a big paddock): trailer + cab.
+    const rowGap = 24;
+    for (let r = 0; r < P.rows && P.v0 + 3 + r * rowGap + 17 < P.v0 + P.D - 20; r++) {
+      const v = P.v0 + 3 + r * rowGap;
+      for (let u = -P.L / 2 + 8; u <= P.L / 2 - 8; u += 6.5) {
+        if (rand() < 0.15) continue;
+        const col = liveries[(rand() * liveries.length) | 0];
+        const [tx, tz] = at(u, v + 6.8);
+        boxes.add(tx, tz, yaw + Math.PI / 2, 2.55, 4, 13.6, col);
+        const [cx, cz] = at(u, v + 13.6 + 1.6);
+        boxes.add(cx, cz, yaw + Math.PI / 2, 2.5, 3.6, 2.4, col === 0x1d1f24 ? 0x2a2c30 : 0xf0f0ee);
+      }
     }
+    const vanStart = P.v0 + Math.min(P.rows, 3) * rowGap;
     if (P.D >= 55) {
       // Hospitality units and team buildings along the back of the paddock.
       let u = -P.L / 2 + 4;
@@ -722,8 +1190,8 @@ export class Landscape {
         u += len + 6;
       }
       // Scattered vans and cars.
-      for (let i = 0; i < 26; i++) {
-        const [x, z] = at(-P.L / 2 + 8 + rand() * (P.L - 16), P.v0 + 24 + rand() * Math.max(4, P.D - 50));
+      for (let i = 0; i < Math.round((26 * P.L) / 150); i++) {
+        const [x, z] = at(-P.L / 2 + 8 + rand() * (P.L - 16), vanStart + rand() * Math.max(4, P.v0 + P.D - 26 - vanStart));
         const van = rand() < 0.4;
         boxes.add(x, z, yaw + (rand() < 0.5 ? 0 : Math.PI / 2), 1.9, van ? 2.4 : 1.4, van ? 5.5 : 4.4, liveries[(rand() * liveries.length) | 0]);
       }
@@ -759,8 +1227,10 @@ export class Landscape {
     const F = this.field;
     const wd = this.wd;
     const q = this.opts.quality;
-    const forestCount = q === 'low' ? 900 : q === 'medium' ? 1700 : 2600;
-    const oliveCount = q === 'low' ? 140 : 320;
+    const dens = this.cfg.trees ?? 1;
+    const forestCount = Math.round((q === 'low' ? 900 : q === 'medium' ? 1700 : 2600) * dens);
+    const oliveCount = Math.round((q === 'low' ? 140 : 320) * (this.cfg.olives ?? 1));
+    const pineShare = this.cfg.pines ?? 0.3;
     const rand = rng(this.seed * 101 + 9);
     const trees = []; // { x, z, s, kind: 0 broadleaf / 1 pine / 2 olive }
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
@@ -770,7 +1240,7 @@ export class Landscape {
       minZ = Math.min(minZ, track.pz[i]);
       maxZ = Math.max(maxZ, track.pz[i]);
     }
-    const pad = 380;
+    const pad = this.cfg.forestRange ?? 380;
     const grid = this.forestGrid;
     const startClear = (x, z) => {
       const qr = track.query(x, z);
@@ -780,14 +1250,24 @@ export class Landscape {
     let attempts = 0;
     let forest = 0;
     while (forest < forestCount && attempts++ < forestCount * 40) {
-      const x = mix(minX - pad, maxX + pad, rand());
-      const z = mix(minZ - pad, maxZ + pad, rand());
+      let x;
+      let z;
+      if (this.cfg.forestNear && rand() < 0.65) {
+        // Most of the trees go where they are seen: close to the circuit.
+        const i = (rand() * track.count) | 0;
+        const lat = (rand() < 0.5 ? -1 : 1) * (wd + 8 + pad * rand() ** 1.8);
+        x = track.px[i] + track.nx[i] * lat;
+        z = track.pz[i] + track.nz[i] * lat;
+      } else {
+        x = mix(minX - pad, maxX + pad, rand());
+        z = mix(minZ - pad, maxZ + pad, rand());
+      }
       const d = F.distAt(x, z);
       if (d < wd + 9 || d > pad) continue;
-      const dens = grid ? F.sample(grid, x, z) : this._forestAt(x, z, d, F.insideAt(x, z));
-      if (rand() > dens * (1 - smooth(pad * 0.6, pad, d) * 0.6)) continue;
+      const cover = grid ? F.sample(grid, x, z) : this._forestAt(x, z, d, F.insideAt(x, z));
+      if (rand() > cover * (1 - smooth(pad * 0.6, pad, d) * 0.6)) continue;
       if (!this._clearOf(x, z, 2) || !startClear(x, z)) continue;
-      trees.push({ x, z, s: 0.8 + rand() * 0.7, kind: rand() < 0.3 ? 1 : 0 });
+      trees.push({ x, z, s: 0.8 + rand() * 0.7, kind: rand() < pineShare ? 1 : 0 });
       forest++;
     }
     attempts = 0;
@@ -801,6 +1281,8 @@ export class Landscape {
       trees.push({ x, z, s: 0.6 + rand() * 0.45, kind: 2 });
       olives++;
     }
+    // Orchard rows, plantations and tree-lined avenues.
+    for (const t of this.extraTrees) if (F.distAt(t.x, t.z) > wd + 6) trees.push(t);
 
     const trunkGeo = new THREE.CylinderGeometry(0.22, 0.32, 2.6, 5);
     trunkGeo.translate(0, 1.3, 0);
@@ -827,7 +1309,8 @@ export class Landscape {
       p.set(t.x, this.track.terrainHeight(t.x, t.z) - 0.25, t.z);
       qt.setFromAxisAngle(up, rand() * Math.PI * 2);
       const wide = t.kind === 2 ? 1.25 : 1;
-      sc.set(t.s * wide, t.s * (0.85 + rand() * 0.35), t.s * wide);
+      const big = t.kind === 2 ? 1 : this.cfg.treeScale ?? 1;
+      sc.set(t.s * wide * big, t.s * (0.85 + rand() * 0.35) * big, t.s * wide * big);
       m.compose(p, qt, sc);
       trunks.setMatrixAt(i, m);
       if (t.kind === 1) {

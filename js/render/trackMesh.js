@@ -3,6 +3,7 @@
 import * as THREE from '../vendor/three.module.min.js';
 import { ROAD_LIFT } from '../track/track.js';
 import { Landscape } from './landscape.js';
+import { mergeGeometries } from '../vendor/addons/utils/BufferGeometryUtils.js';
 
 /** Height of the terrain under a point, plus a little lift for hilly tracks (0 when flat). */
 function lift(track, x, z) {
@@ -347,11 +348,11 @@ export class TrackScene {
     this.root.add(gantry);
 
     // ---- Scenery ----------------------------------------------------------
-    this._buildGrandstands(track, f0, heading, opts, land ? 1 : -1);
+    this._buildGrandstands(track, f0, heading, opts, land ? track.def.scenery.paddock?.side ?? 1 : -1);
     this._buildBrakingBoards(track);
     if (land) land.build(this.root);
     else this._buildTrees(track, lowQ ? 260 : 650, opts);
-    this._buildDistant(cx, cz, size, theme);
+    if (track.def.scenery?.distantHills !== false) this._buildDistant(cx, cz, size, theme);
 
     // ---- Driving line (dynamic) -------------------------------------------
     this.lineSegments = 70;
@@ -375,7 +376,12 @@ export class TrackScene {
     this.root.add(this.drivingLine);
   }
 
-  /** Grandstands by the start line and the pit building (on `pitSide` of the straight). */
+  /**
+   * Grandstands (from the track's scenery config, or two by the start line)
+   * and the pit building on `pitSide` of the straight. Long stands are built in
+   * short sections that follow the curve, and all of them are merged into a
+   * few meshes.
+   */
   _buildGrandstands(track, f0, heading, opts, pitSide) {
     const standMat = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.8 });
     const roofMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
@@ -388,34 +394,55 @@ export class TrackScene {
         g.fillRect(Math.random() * n, Math.random() * n, 3, 3);
       }
     });
-    crowdTex.repeat.set(6, 1);
     const crowdMat = new THREE.MeshStandardMaterial({ map: crowdTex, roughness: 1 });
-    const len = 90;
-    for (const [offsetS, side] of [[-40, -pitSide], [60, -1]]) {
-      const f = track.frameAt(offsetS);
-      const lat = side * (track.wallDist + 6);
-      const g = new THREE.Group();
-      for (let step = 0; step < 6; step++) {
-        const tier = new THREE.Mesh(new THREE.BoxGeometry(len, 0.9 + step * 0.9, 2), standMat);
-        tier.position.set(0, (0.9 + step * 0.9) / 2, step * 2);
-        g.add(tier);
-        const crowd = new THREE.Mesh(new THREE.PlaneGeometry(len, 0.9), crowdMat);
-        crowd.position.set(0, 0.9 + step * 0.9 + 0.01, step * 2 - 0.5);
-        crowd.rotation.x = -Math.PI / 2 - 0.6;
-        g.add(crowd);
+    const sc = track.def.scenery ?? {};
+    // [arc length, side (+1 = left of travel), length]
+    const stands = sc.stands ?? [[-40, -pitSide, 90], [60, -1, 90]];
+    const parts = { stand: [], crowd: [], roof: [] };
+    const place = (geo, list, m) => list.push(geo.applyMatrix4(m));
+    for (const [centreS, side, total] of stands) {
+      const pieces = Math.max(1, Math.ceil(total / 45));
+      const len = total / pieces;
+      for (let p = 0; p < pieces; p++) {
+        const s = centreS + (p - (pieces - 1) / 2) * len;
+        const f = track.frameAt(((s % track.length) + track.length) % track.length);
+        const lat = side * (track.wallDist + 6);
+        const x = f.x + f.nx * lat;
+        const z = f.z + f.nz * lat;
+        // Face the track.
+        const m = new THREE.Matrix4()
+          .makeTranslation(x, track.terrainHeight(x, z) - 0.3, z)
+          .multiply(new THREE.Matrix4().makeRotationY(Math.atan2(f.tx, f.tz) + (side > 0 ? Math.PI / 2 : -Math.PI / 2)));
+        const w = len + 0.6; // close the joints between sections
+        for (let step = 0; step < 6; step++) {
+          const h = 0.9 + step * 0.9;
+          place(new THREE.BoxGeometry(w, h, 2).translate(0, h / 2, step * 2), parts.stand, m);
+          const crowd = new THREE.PlaneGeometry(w, 0.9);
+          crowd.rotateX(-Math.PI / 2 - 0.6);
+          crowd.translate(0, h + 0.01, step * 2 - 0.5);
+          const uv = crowd.attributes.uv;
+          for (let i = 0; i < uv.count; i++) uv.setX(i, (uv.getX(i) * w) / 15);
+          place(crowd, parts.crowd, m);
+        }
+        place(new THREE.BoxGeometry(w + 1.4, 0.3, 14).translate(0, 9.5, 5), parts.roof, m);
       }
-      const roof = new THREE.Mesh(new THREE.BoxGeometry(len + 2, 0.3, 14), roofMat);
-      roof.position.set(0, 9.5, 5);
-      roof.castShadow = opts.shadows;
-      g.add(roof);
-      g.position.set(f.x + f.nx * lat, track.terrainHeight(f.x + f.nx * lat, f.z + f.nz * lat) - 0.3, f.z + f.nz * lat);
-      // Face the track.
-      g.rotation.y = Math.atan2(f.tx, f.tz) + (side > 0 ? Math.PI / 2 : -Math.PI / 2);
-      this.root.add(g);
     }
+    const merged = (list, mat, shadow) => {
+      if (!list.length) return;
+      const plain = list.map((g) => (g.index ? g.toNonIndexed() : g));
+      for (const g of plain) for (const k of Object.keys(g.attributes)) if (!['position', 'normal', 'uv'].includes(k)) g.deleteAttribute(k);
+      const mesh = new THREE.Mesh(mergeGeometries(plain), mat);
+      mesh.castShadow = shadow;
+      this.root.add(mesh);
+    };
+    crowdTex.wrapS = THREE.RepeatWrapping;
+    merged(parts.stand, standMat, false);
+    merged(parts.crowd, crowdMat, false);
+    merged(parts.roof, roofMat, opts.shadows);
     // Pit building alongside the start straight.
-    const pit = new THREE.Mesh(new THREE.BoxGeometry(10, 6, 120), new THREE.MeshStandardMaterial({ color: 0xdfe3e8, roughness: 0.6 }));
-    const fp = track.frameAt(track.length - 70);
+    const pitLen = sc.pit?.length ?? 120;
+    const pit = new THREE.Mesh(new THREE.BoxGeometry(10, 6, pitLen), new THREE.MeshStandardMaterial({ color: 0xdfe3e8, roughness: 0.6 }));
+    const fp = track.frameAt((track.length + (sc.pit?.s ?? -70)) % track.length);
     const latP = pitSide * (track.wallDist + 10);
     pit.position.set(fp.x + fp.nx * latP, 3 + track.terrainHeight(fp.x + fp.nx * latP, fp.z + fp.nz * latP) - 0.3, fp.z + fp.nz * latP);
     pit.rotation.y = Math.atan2(fp.tx, fp.tz);
