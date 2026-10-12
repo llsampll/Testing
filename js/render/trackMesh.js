@@ -2,6 +2,7 @@
 // start gantry and the Forza-style dynamic driving line.
 import * as THREE from '../vendor/three.module.min.js';
 import { ROAD_LIFT } from '../track/track.js';
+import { Landscape } from './landscape.js';
 
 /** Height of the terrain under a point, plus a little lift for hilly tracks (0 when flat). */
 function lift(track, x, z) {
@@ -178,6 +179,11 @@ export class TrackScene {
     // Terrain: flat for flat circuits, otherwise a heightfield that rolls with
     // the road (kept a little below it so the road surface always wins).
     const T = track.ensureTerrain(lowQ ? 150 : 210);
+    // Tracks with a scenery config get the detailed landscape (painted ground,
+    // forest, paddock, pond, footbridges); the terrain is shaped before the mesh.
+    const land = T && track.def.scenery ? new Landscape(track, T, opts) : null;
+    land?.shapeTerrain();
+    this.landscape = land;
     let groundGeo;
     if (T) {
       // Heightfield built from the exact grid the road is draped on.
@@ -190,8 +196,9 @@ export class TrackScene {
           pos[v * 3] = T.x0 + ix * T.cell;
           pos[v * 3 + 1] = T.H[v];
           pos[v * 3 + 2] = T.z0 + iz * T.cell;
-          uv[v * 2] = (ix * T.cell) / 24;
-          uv[v * 2 + 1] = (iz * T.cell) / 24;
+          // The landscape's ground map spans the whole terrain; the plain grass tiles.
+          uv[v * 2] = land ? ix / T.seg : (ix * T.cell) / 24;
+          uv[v * 2 + 1] = land ? iz / T.seg : (iz * T.cell) / 24;
         }
       }
       const idx = new Uint32Array(T.seg * T.seg * 6);
@@ -219,7 +226,7 @@ export class TrackScene {
     }
     const ground = new THREE.Mesh(
       groundGeo,
-      new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1, polygonOffset: true, polygonOffsetFactor: 6, polygonOffsetUnits: 6 }),
+      land ? land.groundMaterial() : new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1, polygonOffset: true, polygonOffsetFactor: 6, polygonOffsetUnits: 6 }),
     );
     ground.receiveShadow = opts.shadows;
     this.root.add(ground);
@@ -340,9 +347,10 @@ export class TrackScene {
     this.root.add(gantry);
 
     // ---- Scenery ----------------------------------------------------------
-    this._buildGrandstands(track, f0, heading, opts);
+    this._buildGrandstands(track, f0, heading, opts, land ? 1 : -1);
     this._buildBrakingBoards(track);
-    this._buildTrees(track, lowQ ? 260 : 650, opts);
+    if (land) land.build(this.root);
+    else this._buildTrees(track, lowQ ? 260 : 650, opts);
     this._buildDistant(cx, cz, size, theme);
 
     // ---- Driving line (dynamic) -------------------------------------------
@@ -367,7 +375,8 @@ export class TrackScene {
     this.root.add(this.drivingLine);
   }
 
-  _buildGrandstands(track, f0, heading, opts) {
+  /** Grandstands by the start line and the pit building (on `pitSide` of the straight). */
+  _buildGrandstands(track, f0, heading, opts, pitSide) {
     const standMat = new THREE.MeshStandardMaterial({ color: 0x9aa3ad, roughness: 0.8 });
     const roofMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.5 });
     const crowdTex = canvasTexture(128, (g, n) => {
@@ -382,7 +391,7 @@ export class TrackScene {
     crowdTex.repeat.set(6, 1);
     const crowdMat = new THREE.MeshStandardMaterial({ map: crowdTex, roughness: 1 });
     const len = 90;
-    for (const [offsetS, side] of [[-40, 1], [60, -1]]) {
+    for (const [offsetS, side] of [[-40, -pitSide], [60, -1]]) {
       const f = track.frameAt(offsetS);
       const lat = side * (track.wallDist + 6);
       const g = new THREE.Group();
@@ -404,10 +413,10 @@ export class TrackScene {
       g.rotation.y = Math.atan2(f.tx, f.tz) + (side > 0 ? Math.PI / 2 : -Math.PI / 2);
       this.root.add(g);
     }
-    // Pit building on the outside of the start straight.
+    // Pit building alongside the start straight.
     const pit = new THREE.Mesh(new THREE.BoxGeometry(10, 6, 120), new THREE.MeshStandardMaterial({ color: 0xdfe3e8, roughness: 0.6 }));
     const fp = track.frameAt(track.length - 70);
-    const latP = -(track.wallDist + 10);
+    const latP = pitSide * (track.wallDist + 10);
     pit.position.set(fp.x + fp.nx * latP, 3 + track.terrainHeight(fp.x + fp.nx * latP, fp.z + fp.nz * latP) - 0.3, fp.z + fp.nz * latP);
     pit.rotation.y = Math.atan2(fp.tx, fp.tz);
     pit.castShadow = opts.shadows;
@@ -513,13 +522,15 @@ export class TrackScene {
   }
 
   _buildDistant(cx, cz, size, theme) {
-    // Ring of low hills/mesas on the horizon.
-    const hillMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(theme.ground).offsetHSL(0, -0.1, -0.08), roughness: 1, flatShading: true });
+    // Ring of low hills/mesas on the horizon (broad wooded rises when the theme has hills).
+    const wooded = theme.hills !== undefined;
+    const hillMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(theme.hills ?? theme.ground).offsetHSL(0, -0.1, -0.08), roughness: 1, flatShading: true });
     const r = size * 0.42;
     for (let i = 0; i < 28; i++) {
       const a = (i / 28) * Math.PI * 2 + Math.random() * 0.1;
-      const h = 30 + Math.random() * 70;
-      const hill = new THREE.Mesh(new THREE.ConeGeometry(60 + Math.random() * 80, h, 6), hillMat);
+      const h = wooded ? 25 + Math.random() * 45 : 30 + Math.random() * 70;
+      const rad = wooded ? 150 + Math.random() * 120 : 60 + Math.random() * 80;
+      const hill = new THREE.Mesh(new THREE.ConeGeometry(rad, h, wooded ? 10 : 6), hillMat);
       const hx = cx + Math.cos(a) * r;
       const hz = cz + Math.sin(a) * r;
       hill.position.set(hx, this.track.terrainHeight(hx, hz) + h / 2 - 2, hz);
@@ -585,6 +596,7 @@ export class TrackScene {
         const mats = Array.isArray(o.material) ? o.material : [o.material];
         for (const m of mats) {
           if (m.map) m.map.dispose();
+          m.userData.detail?.dispose();
           m.dispose();
         }
       }

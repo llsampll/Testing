@@ -41,7 +41,10 @@ export const TRACKS = [
     width: 15,
     runoff: 6,
     scale: 1,
-    theme: { grass: 0x9a9150, sky: 0x8cc4f2, fog: 0xdcd6bd, ground: 0xa89b5b },
+    theme: { grass: 0x8c8c52, sky: 0x8cc4f2, fog: 0xd3d9cc, ground: 0x7f8250, hills: 0x6c8250 },
+    // Wooded hills with dry scrub, sandy patches and olive trees in the
+    // infield, a paddock behind the pits, a pond, lawns and footbridges.
+    scenery: { seed: 7 },
     // Traced from the official layout map (travels counter-clockwise), scaled to the real 3.60 km lap.
     points: [
       [0, 0], [-23.7, -1.1], [-41.3, -1.3], [-57.2, -1.1], [-72.9, -0.8], [-88.6, -0.4],

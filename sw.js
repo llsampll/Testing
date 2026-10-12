@@ -1,11 +1,11 @@
 // Offline cache so the game works without a connection once installed.
-const CACHE = 'apex-circuit-v3';
+const CACHE = 'apex-circuit-v4';
 const ASSETS = [
   './', 'index.html', 'css/style.css', 'manifest.webmanifest', 'icons/icon.svg',
   'js/main.js', 'js/game.js', 'js/race.js', 'js/ai.js', 'js/input.js', 'js/audio.js',
   'js/physics/tire.js', 'js/physics/vehicle.js', 'js/physics/cars.js',
   'js/track/track.js', 'js/track/trackData.js',
-  'js/render/carMesh.js', 'js/render/trackMesh.js',
+  'js/render/carMesh.js', 'js/render/trackMesh.js', 'js/render/landscape.js',
   'js/render/carModel.js', 'js/vendor/addons/loaders/GLTFLoader.js', 'js/vendor/addons/utils/BufferGeometryUtils.js',
   'models/spec-e36.glb', 'models/mp4-19b.glb',
   'js/vendor/three.module.min.js',

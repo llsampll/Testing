@@ -92,6 +92,20 @@ they do on the map. It runs counter-clockwise.
 
 The road, kerbs, barriers, scenery and cars are all draped on one shared terrain surface, so the grass mesh can never poke through the road.
 
+The surroundings follow an aerial reference photo (`js/render/landscape.js`,
+switched on by the track's `scenery` setting):
+
+- **Ground:** a painted ground map with dry grass, sandy patches and forest floor.
+- **Forest and infield:** dense woodland outside the circuit, and scattered
+  olive trees and dirt trails in the infield.
+- **Paddock:** a flat paddock behind the pit garages, with transporters,
+  hospitality units, vans and three octagonal lawns.
+- **Around the track:** a pond dug into the infield, footbridges over the
+  straights, and grey service roads winding through the hills.
+
+The layout of these features is fixed per track, so it looks the same on every
+visit.
+
 Elevation is modelled with about 54 m of relief (the real circuit has about
 55 m): the road climbs from the start line to a crest at turn 6, rolls down
 Rahal Straight, then drops roughly 18 m through the Corkscrew (steepest grade
