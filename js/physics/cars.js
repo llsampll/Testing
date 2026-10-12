@@ -103,6 +103,47 @@ export const CARS = [
     lsd: 0.5,
     rearGrip: 1.05,
   },
+  {
+    id: 'spec-e36',
+    name: 'Spec E36',
+    class: 'C',
+    description: 'E36 spec racer: 2.8 straight-six, five-speed, sticky R-compound tyres and near-perfect balance. Carry your momentum.',
+    color: 0x1f6feb,
+    mass: 1300,             // with driver, class minimum
+    inertiaScale: 1.0,
+    wheelbase: 2.70,
+    frontWeight: 0.51,
+    cgHeight: 0.47,
+    trackWidth: 1.43,
+    wheelRadius: 0.317,     // 225/45R17
+    drive: 'RWD',
+    cylinders: 6,
+    body: 'coupe',          // procedural fallback if the 3D model can't load
+    // 3D model: "BMW E36 M3 racing car" by Cutieunicorn (CC-BY-4.0). Packed with tools/pack_glb.py.
+    model: {
+      url: 'models/spec-e36.glb',
+      wheels: ['Cylinder.001'],
+      trim: ['e36.001', 'e36.008', 'Cylinder.002', 'Plane.002', 'Cube.001', 'Cube.002'],
+    },
+    tire: { mu: 1.22, peakSlipRatio: 0.1, peakSlipAngle: 0.13, shape: 1.46 },
+    // BMW M52 2.8: 193 hp at 5,300 rpm, 280 N·m at 3,950 rpm.
+    torqueCurve: [[1000, 200], [2500, 255], [3950, 280], [5000, 268], [5800, 245], [6500, 210]],
+    idleRpm: 800,
+    redline: 6500,
+    gears: [4.21, 2.49, 1.66, 1.24, 1.0],
+    finalDrive: 3.46,
+    reverseRatio: 3.85,
+    shiftTime: 0.2,
+    brakeTorque: 4800,
+    brakeBias: 0.64,
+    maxSteer: 0.6,
+    dragArea: 0.7,
+    liftArea: 0.12,
+    aeroBalance: 0.45,
+    rollBalance: 0.57,
+    lsd: 0.4,
+    rearGrip: 1.03,
+  },
 ];
 
 export function getCar(id) {

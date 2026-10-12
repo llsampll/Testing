@@ -262,7 +262,7 @@ async function startRace() {
   show('#hud', true);
   document.body.classList.add('in-race');
   game.onFinish = showResults;
-  game.start({
+  await game.start({
     trackDef: TRACKS.find((t) => t.id === settings.track),
     carSpec: CARS.find((c) => c.id === settings.car),
     mode: settings.mode,

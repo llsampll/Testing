@@ -4,6 +4,7 @@ import * as THREE from './vendor/three.module.min.js';
 import { Race, PHYSICS_DT } from './race.js';
 import { Track } from './track/track.js';
 import { CarMesh } from './render/carMesh.js';
+import { preloadCarModel } from './render/carModel.js';
 import { TrackScene } from './render/trackMesh.js';
 import { AIDriver } from './ai.js';
 import { ASSIST_PRESETS } from './physics/vehicle.js';
@@ -68,9 +69,20 @@ export class Game {
    * Build a race and start the loop.
    * @param {object} cfg {trackDef, carSpec, mode, laps, opponents, difficulty, assists, quality, camera, line}
    */
-  start(cfg) {
+  async start(cfg) {
     this.stop();
     this.cfg = cfg;
+    // Load the car's 3D model before building the scene (cached after the first race).
+    if (cfg.carSpec.model) {
+      this.hud.message.innerHTML = 'LOADING…';
+      this.hud.message.classList.add('show');
+      try {
+        await preloadCarModel(cfg.carSpec);
+      } catch (err) {
+        console.warn('Car model failed to load; using the built-in body instead.', err);
+      }
+      this.hud.message.classList.remove('show');
+    }
     const quality = cfg.quality;
     const dpr = window.devicePixelRatio || 1;
     this.renderer.setPixelRatio(quality === 'high' ? Math.min(dpr, 2) : quality === 'medium' ? Math.min(dpr, 1.5) : 1);
@@ -178,7 +190,7 @@ export class Game {
 
     this.trackScene = new TrackScene(scene, this.track, { shadows: quality === 'high', quality });
     this.carMeshes = this.race.cars.map((c, i) => {
-      const mesh = new CarMesh(c.vehicle.spec, c.color, { shadows: quality === 'high', number: i + 1 });
+      const mesh = new CarMesh(c.vehicle.spec, c.color, { shadows: quality === 'high', number: i + 1, isPlayer: c.isPlayer });
       scene.add(mesh.group);
       return mesh;
     });

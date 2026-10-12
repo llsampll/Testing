@@ -46,8 +46,10 @@ shifts automatically, but you can still shift by hand.
 
 ## What's in it
 
-- **3 cars**: an FWD hot hatch (Class C), an RWD V8 coupe (Class B) and a
-  GT3 race car with downforce (Class A).
+- **4 cars**: an FWD hot hatch (Class C), an RWD V8 coupe (Class B), a GT3
+  race car with downforce (Class A), and the **Spec E36**. The Spec E36 is
+  an E36 spec racer with a 2.8 L straight-six and a 5-speed gearbox, drawn
+  with a real 3D model (see below).
 - **3 circuits**: *Harbor Point GP* (2.9 km, fast and flowing), *Red
   Canyon Ring* (2.2 km, technical) and *Laguna Seca* (3.6 km with 54 m of
   elevation, traced from the real Monterey circuit map).
@@ -82,6 +84,30 @@ about 18%) and on down to the final corner. The height profile is a hand-built
 approximation from published figures, not survey data, and it is defined by a
 short list of `[distance, height]` anchors in `js/track/trackData.js`, so it's
 easy to refine. Any track can use the same `elevation` field.
+
+### 3D car models
+
+Cars can use a glTF model instead of the built-in procedural body. To use one,
+set `model` in the car's spec in `js/physics/cars.js`. On load,
+`js/render/carModel.js` adapts the model to the game:
+
+- scales it so its wheelbase matches the physics
+- places its axles on the physics axles and puts the tyres on the ground
+- splits the wheels into four so each can spin and steer
+- merges the rest of the body, so a car is only a few draw calls
+
+If a model can't load, the procedural body is used instead.
+
+**Spec E36 model:** "BMW E36 M3 racing car" by
+[Cutieunicorn](https://sketchfab.com/lukas.dlabek), licensed
+[CC BY 4.0](http://creativecommons.org/licenses/by/4.0/), from
+[Sketchfab](https://sketchfab.com/3d-models/bmw-e36-m3-racing-car-241b53e288bc44f28176e6523c286381).
+The source files are in `models/src/spec-e36/`.
+`python3 tools/pack_glb.py models/src/spec-e36/scene.gltf models/spec-e36.glb`
+packs them into the single file the game loads. The texture
+(`textures/Material_baseColor.png`) isn't included yet, so the car is drawn in
+plain team colours. To use the real livery, add the texture to
+`models/src/spec-e36/textures/` and re-run the pack command.
 
 ## Physics
 

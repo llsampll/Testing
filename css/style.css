@@ -167,6 +167,8 @@ h2 { font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase; color: 
 .seg button.active { background: var(--text); color: #0b0e14; }
 .hint { font-size: 11px; color: var(--muted); margin: 5px 2px 0; }
 .keys { font-size: 12px; color: var(--muted); margin-top: 22px; }
+.credits { font-size: 11px; color: var(--muted); margin-top: 6px; }
+.credits a { color: var(--text); }
 
 .start-btn {
   position: fixed; right: calc(18px + var(--safe-r)); bottom: calc(16px + var(--safe-b)); z-index: 11;

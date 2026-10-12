@@ -1,5 +1,6 @@
 // Procedural low-poly car models built from extruded side profiles.
 import * as THREE from '../vendor/three.module.min.js';
+import { getCarModel, instantiate } from './carModel.js';
 
 // Side profiles: [z (forward), y (up)] in meters, traced front-bottom first.
 const PROFILES = {
@@ -97,10 +98,16 @@ function blobShadowTexture() {
 }
 
 export class CarMesh {
-  constructor(spec, color, { shadows = false, number = null } = {}) {
-    const prof = PROFILES[spec.body] ?? PROFILES.coupe;
+  constructor(spec, color, { shadows = false, number = null, isPlayer = false } = {}) {
     this.spec = spec;
     this.group = new THREE.Group();
+    // A loaded 3D model takes priority; the procedural body is the fallback.
+    const model = getCarModel(spec);
+    if (model) {
+      this._buildFromModel(model, color, { shadows, isPlayer });
+      return;
+    }
+    const prof = PROFILES[spec.body] ?? PROFILES.coupe;
     this.body = new THREE.Group();
     this.group.add(this.body);
 
@@ -192,13 +199,27 @@ export class CarMesh {
     // Shift the body so its wheel arches line up with the physics axles.
     this.body.position.z = (a - b) / 2;
 
+    this._addShadow(prof.width, prof.length, this.body.position.z);
+  }
+
+  _buildFromModel(model, color, { shadows, isPlayer }) {
+    this.isModel = true; // geometry is shared with other cars and later races
+    const inst = instantiate(model, { color, isPlayer, shadows });
+    this.group.add(inst.group);
+    this.body = inst.body;
+    this.wheels = inst.wheels;
+    this.tailMat = new THREE.MeshStandardMaterial(); // the model's lights are in its texture
+    this._addShadow(model.size.x, model.size.z, (model.box.min.z + model.box.max.z) / 2);
+  }
+
+  _addShadow(width, length, z) {
     const shadow = new THREE.Mesh(
-      new THREE.PlaneGeometry(prof.width * 1.5, prof.length * 1.25),
+      new THREE.PlaneGeometry(width * 1.5, length * 1.25),
       new THREE.MeshBasicMaterial({ map: blobShadowTexture(), transparent: true, depthWrite: false }),
     );
     shadow.rotation.x = -Math.PI / 2;
     shadow.position.y = 0.12;
-    shadow.position.z = this.body.position.z;
+    shadow.position.z = z;
     shadow.renderOrder = 1;
     this.group.add(shadow);
   }
@@ -224,6 +245,7 @@ export class CarMesh {
   }
 
   dispose() {
+    if (this.isModel) return;
     this.group.traverse((o) => {
       if (o.isMesh) {
         if (o.geometry !== sharedWheel?.tire && o.geometry !== sharedWheel?.rim && o.geometry !== sharedWheel?.spoke) o.geometry.dispose();
