@@ -41,7 +41,7 @@ export class Game {
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.05;
-    this.camera = new THREE.PerspectiveCamera(62, 1, 0.3, 4000);
+    this.camera = new THREE.PerspectiveCamera(62, 1, 0.4, 2800);
     this.running = false;
     this.paused = false;
     this.cameraMode = 'chase';
@@ -129,7 +129,7 @@ export class Game {
     scene.fog = new THREE.Fog(theme.fog, 220, 1500);
 
     // Gradient sky dome.
-    const skyGeo = new THREE.SphereGeometry(3000, 24, 12);
+    const skyGeo = new THREE.SphereGeometry(2400, 24, 12);
     const skyMat = new THREE.ShaderMaterial({
       side: THREE.BackSide,
       depthWrite: false,
@@ -352,6 +352,8 @@ export class Game {
     if (steps === 60) this.accumulator = 0;
 
     this._handleEvents();
+    // Sit every car on the exact surface the road mesh is built on.
+    for (const c of this.race.cars) c.vehicle.y = this.track.roadY(c.vehicle.x, c.vehicle.z);
     for (let i = 0; i < this.carMeshes.length; i++) this.carMeshes[i].update(this.race.cars[i].vehicle, dt);
     this._updateCamera(dt);
     this._updateStartLights();
@@ -475,8 +477,10 @@ export class Game {
       const hx = Math.sin(this.camHeading);
       const hz = Math.cos(this.camHeading);
       // Stay above the road behind us too, so a dip or the Corkscrew drop never buries the camera.
-      const baseY = this.track.hasElevation ? Math.max(v.y, this.track.heightAtS(this.player.s - dist)) : 0;
-      const desired = new THREE.Vector3(v.x - hx * dist, baseY + height, v.z - hz * dist);
+      const cxp = v.x - hx * dist;
+      const czp = v.z - hz * dist;
+      const baseY = this.track.terrain ? Math.max(v.y, this.track.roadY(cxp, czp)) : 0;
+      const desired = new THREE.Vector3(cxp, baseY + height, czp);
       if (!this.camPos) this.camPos = desired.clone();
       this.camPos.lerp(desired, Math.min(1, dt * 12));
       cam.position.copy(this.camPos);

@@ -1,6 +1,12 @@
 // Builds the 3D environment for a track: road, kerbs, barriers, scenery,
 // start gantry and the Forza-style dynamic driving line.
 import * as THREE from '../vendor/three.module.min.js';
+import { ROAD_LIFT } from '../track/track.js';
+
+/** Height of the terrain under a point, plus a little lift for hilly tracks (0 when flat). */
+function lift(track, x, z) {
+  return track.terrain ? track.terrainHeight(x, z) + ROAD_LIFT - 0.04 : 0;
+}
 
 function canvasTexture(size, draw, repeat = true) {
   const c = document.createElement('canvas');
@@ -69,16 +75,23 @@ function ribbon(track, inner, outer, { y = 0, vScale = 1 / 8, step = 1, filter =
     const a = typeof inner === 'function' ? inner(k) : inner;
     const b = typeof outer === 'function' ? outer(k) : outer;
     const base = pos.length / 3;
-    const yy = y + track.h[k];
-    pos.push(px + nx * a, yy, pz + nz * a, px + nx * b, yy, pz + nz * b);
+    // Several strips across the width, so the surface follows the terrain
+    // mesh closely instead of cutting a straight chord across it.
+    const steps = Math.max(1, Math.ceil(Math.abs(b - a) / 2.5));
     const v = i * track.spacing * vScale;
-    uv.push(0, v, 1, v);
-    if (colors) {
-      const c = colors(k);
-      col.push(c.r, c.g, c.b, c.r, c.g, c.b);
+    const c = colors ? colors(k) : null;
+    for (let j = 0; j <= steps; j++) {
+      const lat = a + ((b - a) * j) / steps;
+      const x = px + nx * lat;
+      const z = pz + nz * lat;
+      pos.push(x, y + lift(track, x, z), z);
+      uv.push(j / steps, v);
+      if (c) col.push(c.r, c.g, c.b);
     }
     // Counter-clockwise seen from above so the faces point up.
-    if (run >= 0) idx.push(run, base, run + 1, run + 1, base, base + 1);
+    if (run >= 0 && base - run === steps + 1) {
+      for (let j = 0; j < steps; j++) idx.push(run + j, base + j, run + j + 1, run + j + 1, base + j, base + j + 1);
+    }
     run = base;
   }
   const geo = new THREE.BufferGeometry();
@@ -103,7 +116,8 @@ function wall(track, offset, height, side) {
     const k = i % n;
     const x = track.px[k] + track.nx[k] * offset;
     const z = track.pz[k] + track.nz[k] * offset;
-    pos.push(x, track.h[k], z, x, track.h[k] + height, z);
+    const base = lift(track, x, z);
+    pos.push(x, base, z, x, base + height, z);
     const v = i * track.spacing;
     uv.push(v / 4, 0, v / 4, 1);
     if (i > 0) {
@@ -163,16 +177,46 @@ export class TrackScene {
     grassTex.repeat.set(size / 24, size / 24);
     // Terrain: flat for flat circuits, otherwise a heightfield that rolls with
     // the road (kept a little below it so the road surface always wins).
-    const hilly = track.hasElevation;
-    const seg = hilly ? (lowQ ? 150 : 210) : 1;
-    const groundGeo = new THREE.PlaneGeometry(size, size, seg, seg);
-    groundGeo.rotateX(-Math.PI / 2);
-    groundGeo.translate(cx, 0, cz);
-    const gp = groundGeo.attributes.position;
-    for (let i = 0; i < gp.count; i++) {
-      gp.setY(i, hilly ? track.groundHeight(gp.getX(i), gp.getZ(i)) - (lowQ ? 0.9 : 0.6) : -0.08);
+    const T = track.ensureTerrain(lowQ ? 150 : 210);
+    let groundGeo;
+    if (T) {
+      // Heightfield built from the exact grid the road is draped on.
+      const n = T.n;
+      const pos = new Float32Array(n * n * 3);
+      const uv = new Float32Array(n * n * 2);
+      for (let iz = 0; iz < n; iz++) {
+        for (let ix = 0; ix < n; ix++) {
+          const v = iz * n + ix;
+          pos[v * 3] = T.x0 + ix * T.cell;
+          pos[v * 3 + 1] = T.H[v];
+          pos[v * 3 + 2] = T.z0 + iz * T.cell;
+          uv[v * 2] = (ix * T.cell) / 24;
+          uv[v * 2 + 1] = (iz * T.cell) / 24;
+        }
+      }
+      const idx = new Uint32Array(T.seg * T.seg * 6);
+      let o = 0;
+      for (let iz = 0; iz < T.seg; iz++) {
+        for (let ix = 0; ix < T.seg; ix++) {
+          const v00 = iz * n + ix;
+          const v10 = v00 + 1;
+          const v01 = v00 + n;
+          const v11 = v01 + 1;
+          idx[o++] = v00; idx[o++] = v01; idx[o++] = v10; // up-facing, diagonal v01-v10
+          idx[o++] = v10; idx[o++] = v01; idx[o++] = v11;
+        }
+      }
+      groundGeo = new THREE.BufferGeometry();
+      groundGeo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+      groundGeo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+      groundGeo.setIndex(new THREE.BufferAttribute(idx, 1));
+      groundGeo.computeVertexNormals();
+      grassTex.repeat.set(1, 1);
+    } else {
+      groundGeo = new THREE.PlaneGeometry(size, size);
+      groundGeo.rotateX(-Math.PI / 2);
+      groundGeo.translate(cx, -0.08, cz);
     }
-    groundGeo.computeVertexNormals();
     const ground = new THREE.Mesh(
       groundGeo,
       new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1, polygonOffset: true, polygonOffsetFactor: 6, polygonOffsetUnits: 6 }),
@@ -183,13 +227,14 @@ export class TrackScene {
     // ---- Road -------------------------------------------------------------
     const asphalt = asphaltTexture();
     asphalt.repeat.set(3, 3);
-    const roadMat = new THREE.MeshStandardMaterial({ map: asphalt, roughness: 0.92, metalness: 0 });
+    const roadMat = new THREE.MeshStandardMaterial({ map: asphalt, roughness: 0.92, metalness: 0, polygonOffset: true, polygonOffsetFactor: -1, polygonOffsetUnits: -1 });
+    const decal = { polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 };
     const road = new THREE.Mesh(ribbon(track, -hw, hw, { y: 0.04, vScale: 1 / hw / 2 }), roadMat);
     road.receiveShadow = opts.shadows;
     this.root.add(road);
 
     // Edge lines.
-    const lineMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.6 });
+    const lineMat = new THREE.MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.6, ...decal });
     this.root.add(new THREE.Mesh(ribbon(track, hw - 0.45, hw - 0.2, { y: 0.07 }), lineMat));
     this.root.add(new THREE.Mesh(ribbon(track, -hw + 0.2, -hw + 0.45, { y: 0.07 }), lineMat));
 
@@ -199,7 +244,7 @@ export class TrackScene {
     const red = new THREE.Color(0xd62828);
     const white = new THREE.Color(0xf4f4f4);
     const stripe = (k) => (Math.floor(k / 1.5) % 2 === 0 ? red : white);
-    const kerbMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7 });
+    const kerbMat = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.7, ...decal });
     const kw = track.kerbWidth;
     this.root.add(new THREE.Mesh(ribbon(track, hw - 0.05, hw + kw, { y: 0.07, filter: isCorner, colors: stripe }), kerbMat));
     this.root.add(new THREE.Mesh(ribbon(track, -hw - kw, -hw + 0.05, { y: 0.07, filter: isCorner, colors: stripe }), kerbMat));
@@ -234,14 +279,14 @@ export class TrackScene {
           g.fillRect((x * n) / cells, (y * n) / 2, n / cells, n / 2);
         }
     }, false);
-    const startLine = new THREE.Mesh(new THREE.PlaneGeometry(track.width, 1.6), new THREE.MeshStandardMaterial({ map: checker, roughness: 0.7 }));
+    const startLine = new THREE.Mesh(new THREE.PlaneGeometry(track.width, 1.6), new THREE.MeshStandardMaterial({ map: checker, roughness: 0.7, ...decal }));
     startLine.rotation.order = 'YXZ';
     startLine.rotation.y = heading;
     startLine.rotation.x = -Math.PI / 2;
-    startLine.position.set(f0.x, 0.08 + track.heightAtS(0), f0.z);
+    startLine.position.set(f0.x, 0.08 + lift(track, f0.x, f0.z), f0.z);
     this.root.add(startLine);
 
-    const gridMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const gridMat = new THREE.MeshBasicMaterial({ color: 0xffffff, ...decal });
     for (let i = 0; i < 16; i++) {
       const row = Math.floor(i / 2);
       const side = i % 2 === 0 ? 1 : -1;
@@ -252,7 +297,7 @@ export class TrackScene {
       mark.rotation.order = 'YXZ';
       mark.rotation.y = Math.atan2(f.tx, f.tz);
       mark.rotation.x = -Math.PI / 2;
-      mark.position.set(f.x + f.nx * lat, 0.08 + track.heightAtS(s), f.z + f.nz * lat);
+      mark.position.set(f.x + f.nx * lat, 0.08 + lift(track, f.x + f.nx * lat, f.z + f.nz * lat), f.z + f.nz * lat);
       this.root.add(mark);
     }
 
@@ -290,7 +335,7 @@ export class TrackScene {
     const bannerMesh = new THREE.Mesh(new THREE.PlaneGeometry(4, 1.2), new THREE.MeshBasicMaterial({ map: banner }));
     bannerMesh.position.set(0, 6.6, 0.31);
     gantry.add(bannerMesh);
-    gantry.position.set(f0.x, track.heightAtS(0), f0.z);
+    gantry.position.set(f0.x, lift(track, f0.x, f0.z), f0.z);
     gantry.rotation.y = heading;
     this.root.add(gantry);
 
@@ -314,7 +359,7 @@ export class TrackScene {
     lineGeo.setIndex(lidx);
     this.drivingLine = new THREE.Mesh(
       lineGeo,
-      new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.75, depthWrite: false, side: THREE.DoubleSide }),
+      new THREE.MeshBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.75, depthWrite: false, side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -4, polygonOffsetUnits: -4 }),
     );
     this.drivingLine.frustumCulled = false;
     this.drivingLine.renderOrder = 2;
@@ -353,7 +398,7 @@ export class TrackScene {
       roof.position.set(0, 9.5, 5);
       roof.castShadow = opts.shadows;
       g.add(roof);
-      g.position.set(f.x + f.nx * lat, track.heightAtS(offsetS) - 0.3, f.z + f.nz * lat);
+      g.position.set(f.x + f.nx * lat, track.terrainHeight(f.x + f.nx * lat, f.z + f.nz * lat) - 0.3, f.z + f.nz * lat);
       // Face the track.
       g.rotation.y = Math.atan2(f.tx, f.tz) + (side > 0 ? Math.PI / 2 : -Math.PI / 2);
       this.root.add(g);
@@ -362,7 +407,7 @@ export class TrackScene {
     const pit = new THREE.Mesh(new THREE.BoxGeometry(10, 6, 120), new THREE.MeshStandardMaterial({ color: 0xdfe3e8, roughness: 0.6 }));
     const fp = track.frameAt(track.length - 70);
     const latP = -(track.wallDist + 10);
-    pit.position.set(fp.x + fp.nx * latP, 3 + track.heightAtS(track.length - 70) - 0.3, fp.z + fp.nz * latP);
+    pit.position.set(fp.x + fp.nx * latP, 3 + track.terrainHeight(fp.x + fp.nx * latP, fp.z + fp.nz * latP) - 0.3, fp.z + fp.nz * latP);
     pit.rotation.y = Math.atan2(fp.tx, fp.tz);
     pit.castShadow = opts.shadows;
     this.root.add(pit);
@@ -394,7 +439,7 @@ export class TrackScene {
       track.query(x, z, -1, query);
       if (query.distance < track.wallDist + 5) continue;
       const sc = 0.7 + Math.random() * 0.8;
-      p.set(x, track.groundHeight(x, z) - 0.3, z);
+      p.set(x, track.terrainHeight(x, z) - 0.3, z);
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI);
       s.set(sc, sc * (0.8 + Math.random() * 0.5), sc);
       m.compose(p, q, s);
@@ -419,7 +464,7 @@ export class TrackScene {
       const hill = new THREE.Mesh(new THREE.ConeGeometry(60 + Math.random() * 80, h, 6), hillMat);
       const hx = cx + Math.cos(a) * r;
       const hz = cz + Math.sin(a) * r;
-      hill.position.set(hx, this.track.groundHeight(hx, hz) + h / 2 - 2, hz);
+      hill.position.set(hx, this.track.terrainHeight(hx, hz) + h / 2 - 2, hz);
       this.root.add(hill);
     }
   }
@@ -457,7 +502,7 @@ export class TrackScene {
       const nx = track.rnx[k];
       const nz = track.rnz[k];
       const w = 0.45;
-      const y = 0.1 + track.h[k];
+      const y = 0.1 + lift(track, x, z);
       pos.setXYZ(i * 2, x + nx * w, y, z + nz * w);
       pos.setXYZ(i * 2 + 1, x - nx * w, y, z - nz * w);
       // Compare speed with what's needed at that point (and the distance left to slow down).

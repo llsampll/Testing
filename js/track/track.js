@@ -65,6 +65,9 @@ function periodicPchip(anchors, period) {
   };
 }
 
+/** How far the road surface sits above the terrain mesh (meters). */
+export const ROAD_LIFT = 0.16;
+
 export const SURFACE = {
   asphalt: { grip: 1.0, drag: 0.0 },
   kerb: { grip: 0.93, drag: 0.004 },
@@ -210,6 +213,60 @@ export class Track {
       this._gz[j] = this.pz[i];
       this._gh[j] = this.h[i];
     }
+  }
+
+  /**
+   * Build the terrain heightfield (hilly tracks only). Everything that sits on
+   * the ground - road, kerbs, barriers, scenery, cars - samples this exact
+   * surface through `terrainHeight`, so the grass can never poke through the
+   * road however steep the slope.
+   */
+  ensureTerrain(seg) {
+    if (!this.hasElevation) return null;
+    if (this.terrain && this.terrain.seg === seg) return this.terrain;
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (let i = 0; i < this.count; i++) {
+      minX = Math.min(minX, this.px[i]);
+      maxX = Math.max(maxX, this.px[i]);
+      minZ = Math.min(minZ, this.pz[i]);
+      maxZ = Math.max(maxZ, this.pz[i]);
+    }
+    const cx = (minX + maxX) / 2;
+    const cz = (minZ + maxZ) / 2;
+    const size = Math.max(maxX - minX, maxZ - minZ) + 1600;
+    const n = seg + 1;
+    const cell = size / seg;
+    const x0 = cx - size / 2;
+    const z0 = cz - size / 2;
+    const H = new Float32Array(n * n);
+    for (let iz = 0; iz < n; iz++) for (let ix = 0; ix < n; ix++) H[iz * n + ix] = this.groundHeight(x0 + ix * cell, z0 + iz * cell);
+    this.terrain = { seg, n, cell, x0, z0, size, cx, cz, H };
+    return this.terrain;
+  }
+
+  /** Exact height of the terrain mesh (same triangulation as the rendered mesh). */
+  terrainHeight(x, z) {
+    const T = this.terrain;
+    if (!T) return 0;
+    const fx = Math.min(Math.max((x - T.x0) / T.cell, 0), T.seg - 1e-6);
+    const fz = Math.min(Math.max((z - T.z0) / T.cell, 0), T.seg - 1e-6);
+    const ix = Math.floor(fx);
+    const iz = Math.floor(fz);
+    const u = fx - ix;
+    const w = fz - iz;
+    const k = iz * T.n + ix;
+    const h00 = T.H[k];
+    const h10 = T.H[k + 1];
+    const h01 = T.H[k + T.n];
+    const h11 = T.H[k + T.n + 1];
+    // Cells are split along the v01-v10 diagonal.
+    if (u + w <= 1) return h00 + u * (h10 - h00) + w * (h01 - h00);
+    return h11 + (1 - u) * (h01 - h11) + (1 - w) * (h10 - h11);
+  }
+
+  /** Height of the drivable surface at a world position (what wheels touch). */
+  roadY(x, z) {
+    return this.terrain ? this.terrainHeight(x, z) + ROAD_LIFT : 0.04;
   }
 
   /** Road height at arc length s (linear between samples). */

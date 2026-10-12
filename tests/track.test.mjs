@@ -31,3 +31,25 @@ test('Laguna Seca: real lap length and ~55 m of relief with a Corkscrew-style dr
   // Seamless around the start/finish line.
   assert.ok(Math.abs(t.h[0] - t.h[t.count - 1]) < 0.3);
 });
+
+test('terrain mesh and road share one surface (no grass through the road)', () => {
+  const t = new Track(TRACKS.find((d) => d.id === 'laguna'));
+  const T = t.ensureTerrain(150);
+  // The sampler returns the stored height exactly at every grid vertex...
+  for (const [ix, iz] of [[0, 0], [10, 20], [75, 75], [149, 149]]) {
+    const v = T.H[iz * T.n + ix];
+    assert.ok(Math.abs(t.terrainHeight(T.x0 + ix * T.cell, T.z0 + iz * T.cell) - v) < 1e-3);
+  }
+  // ...and the terrain stays near the true road height, so the hills read right.
+  let worst = 0;
+  for (let i = 0; i < t.count; i += 3) worst = Math.max(worst, Math.abs(t.terrainHeight(t.px[i], t.pz[i]) - t.h[i]));
+  assert.ok(worst < 2.5, `terrain drifts ${worst.toFixed(2)} m from the road profile`);
+  // Road surface is always above the terrain at its own position.
+  for (let i = 0; i < t.count; i += 3) {
+    for (const lat of [-t.halfWidth, 0, t.halfWidth]) {
+      const x = t.px[i] + t.nx[i] * lat;
+      const z = t.pz[i] + t.nz[i] * lat;
+      assert.ok(t.roadY(x, z) > t.terrainHeight(x, z));
+    }
+  }
+});

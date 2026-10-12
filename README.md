@@ -73,6 +73,8 @@ front straight, Andretti hairpin, the loop out to turns 5 and 6, Rahal
 Straight, the Corkscrew notch, Rainey Curve and the final corner all sit where
 they do on the map. It runs counter-clockwise.
 
+The road, kerbs, barriers, scenery and cars are all draped on one shared terrain surface, so the grass mesh can never poke through the road.
+
 Elevation is modelled with about 54 m of relief (the real circuit has about
 55 m): the road climbs from the start line to a crest at turn 6, rolls down
 Rahal Straight, then drops roughly 18 m through the Corkscrew (steepest grade
