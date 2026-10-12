@@ -104,10 +104,9 @@ If a model can't load, the procedural body is used instead.
 [Sketchfab](https://sketchfab.com/3d-models/bmw-e36-m3-racing-car-241b53e288bc44f28176e6523c286381).
 The source files are in `models/src/spec-e36/`.
 `python3 tools/pack_glb.py models/src/spec-e36/scene.gltf models/spec-e36.glb`
-packs them into the single file the game loads. The texture
-(`textures/Material_baseColor.png`) isn't included yet, so the car is drawn in
-plain team colours. To use the real livery, add the texture to
-`models/src/spec-e36/textures/` and re-run the pack command.
+packs the model, its geometry and its palette texture into the single file the
+game loads. Your car keeps the white livery; rival cars are tinted with their
+team colour so you can tell them apart.
 
 ## Physics
 

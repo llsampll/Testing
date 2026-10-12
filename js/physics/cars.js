@@ -108,7 +108,7 @@ export const CARS = [
     name: 'Spec E36',
     class: 'C',
     description: 'E36 spec racer: 2.8 straight-six, five-speed, sticky R-compound tyres and near-perfect balance. Carry your momentum.',
-    color: 0x1f6feb,
+    color: 0xeef1f4,        // the model's livery is white
     mass: 1300,             // with driver, class minimum
     inertiaScale: 1.0,
     wheelbase: 2.70,

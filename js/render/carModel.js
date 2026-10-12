@@ -153,7 +153,7 @@ export function instantiate(tpl, { color, isPlayer, shadows }) {
   let wheelMat;
   if (tpl.map) {
     // Textured livery: rivals get a tint of their team colour so they're easy to tell apart.
-    const tint = isPlayer ? new THREE.Color(0xffffff) : new THREE.Color(0xffffff).lerp(new THREE.Color(color), 0.45);
+    const tint = isPlayer ? new THREE.Color(0xffffff) : new THREE.Color(0xffffff).lerp(new THREE.Color(color), 0.75);
     paint = new THREE.MeshStandardMaterial({ map: tpl.map, color: tint, roughness: 0.55, metalness: 0.1 });
     trimMat = paint;
     wheelMat = new THREE.MeshStandardMaterial({ map: tpl.map, roughness: 0.8 });
