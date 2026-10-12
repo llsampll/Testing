@@ -46,8 +46,10 @@ shifts automatically, but you can still shift by hand.
 
 ## What's in it
 
-- **3 cars**: an FWD hot hatch (Class C), an RWD V8 coupe (Class B) and a
-  GT3 race car with downforce (Class A).
+- **4 cars**: an FWD hot hatch (Class C), an RWD V8 coupe (Class B), a GT3
+  race car with downforce (Class A), and the **Pork 711 GT3rs** (Class S).
+  The GT3rs is a rear-engined, 9,000 rpm flat-six road racer whose body was
+  modelled from a blueprint (see below).
 - **3 circuits**: *Harbor Point GP* (2.9 km, fast and flowing), *Red
   Canyon Ring* (2.2 km, technical) and *Laguna Seca* (3.6 km with 54 m of
   elevation, traced from the real Monterey circuit map).
@@ -82,6 +84,26 @@ about 18%) and on down to the final corner. The height profile is a hand-built
 approximation from published figures, not survey data, and it is defined by a
 short list of `[distance, height]` anchors in `js/track/trackData.js`, so it's
 easy to refine. Any track can use the same `elevation` field.
+
+### About the Pork 711 GT3rs model
+
+The body is built from blueprint measurements rather than drawn by hand. The
+side-view and plan-view silhouettes were extracted from the drawing and
+sampled every 4 cm into roof height and half-width stations
+(`js/render/blueprints.js`). `js/render/blueprintCar.js` then lofts the body
+through those stations. Each cross-section is rounded at the sills and
+shoulders and pulled inward above the belt line to form the glasshouse. Wheel
+arches are cut at the drawing's axle positions, and the windscreen, side and
+rear glass are placed from the blueprint. Details are added on top: round
+headlamps, front-wing louvres, a three-intake nose with splitter, mirrors, a
+full-width tail-light bar, twin centre exhausts and a swan-neck wing. The
+rendered side view lines up with the blueprint's outline. Its specs follow a
+991-generation GT3 RS: 4.0 L flat-six with about 500 hp, 7-speed dual-clutch,
+1,420 kg with 39/61 weight distribution, and around 345 kg of downforce at
+top speed.
+
+Any car can use a blueprint body: add an entry to `BLUEPRINTS` and set the
+car's `body` to its key.
 
 ## Physics
 
@@ -150,5 +172,5 @@ js/input.js                   tilt / touch / keyboard / gamepad
 js/audio.js                   procedural Web Audio sound
 js/physics/                   tire model, vehicle model, car specs
 js/track/                     track spline, elevation, racing line, speed profiles, layouts
-js/render/                    procedural car and track meshes
+js/render/                    procedural car and track meshes, blueprint-lofted bodies
 ```

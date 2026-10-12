@@ -103,6 +103,41 @@ export const CARS = [
     lsd: 0.5,
     rearGrip: 1.05,
   },
+  {
+    id: 'gt3rs',
+    name: 'Pork 711 GT3rs',
+    class: 'S',
+    description: 'Rear-engined flat-six screaming to 9,000 rpm. Huge traction out of corners - but respect the lift-off.',
+    color: 0xf26b1d,
+    mass: 1420,
+    inertiaScale: 0.92,
+    wheelbase: 2.456,
+    frontWeight: 0.39,      // engine behind the rear axle
+    cgHeight: 0.44,
+    trackWidth: 1.57,
+    wheelRadius: 0.35,
+    drive: 'RWD',
+    cylinders: 6,
+    body: 'gt3rs',
+    tire: { mu: 1.32, peakSlipRatio: 0.1, peakSlipAngle: 0.13, shape: 1.46 },
+    // 4.0 litre naturally aspirated flat-six: ~500 hp at 8,250 rpm, 460 N·m.
+    torqueCurve: [[1500, 330], [3000, 400], [4500, 440], [6250, 460], [7500, 450], [8250, 435], [9000, 390]],
+    idleRpm: 950,
+    redline: 9000,
+    gears: [3.75, 2.38, 1.72, 1.34, 1.11, 0.96, 0.84], // 7-speed dual clutch
+    finalDrive: 3.97,
+    reverseRatio: 3.4,
+    shiftTime: 0.06,
+    brakeTorque: 7000,
+    brakeBias: 0.6,
+    maxSteer: 0.55,
+    dragArea: 0.78,
+    liftArea: 0.73,         // ~345 kg of downforce at top speed
+    aeroBalance: 0.4,
+    rollBalance: 0.62,
+    lsd: 0.45,
+    rearGrip: 1.12,         // 325-section rear tires vs 265 front
+  },
 ];
 
 export function getCar(id) {
