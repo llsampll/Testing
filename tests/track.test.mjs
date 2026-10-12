@@ -53,3 +53,30 @@ test('terrain mesh and road share one surface (no grass through the road)', () =
     }
   }
 });
+
+test('braking boards sit at 300/200/100 m before braking corners, on the approach straight', () => {
+  for (const def of TRACKS) {
+    const t = new Track(def);
+    const markers = t.brakingMarkers();
+    for (const m of markers) {
+      assert.ok([300, 200, 100].includes(m.distance));
+      // Exact distance to the corner, measured along the track.
+      const gap = (((m.corner - m.s) % t.length) + t.length) % t.length;
+      assert.ok(Math.abs(gap - m.distance) < 0.01, `${def.id}: ${m.distance} m board is ${gap.toFixed(2)} m out`);
+      // Nothing between the board and the corner is itself a corner.
+      const steps = Math.round(m.distance / t.spacing);
+      for (let step = 0; step < steps; step++) {
+        const i = Math.round(((m.s + step * t.spacing) % t.length) / t.spacing) % t.count;
+        let k = 0;
+        for (let j = -5; j <= 5; j++) k += Math.abs(t.curvature[(i + j + t.count) % t.count]);
+        assert.ok(k / 11 < 1 / 140 + 1e-9, `${def.id}: board at ${m.s.toFixed(0)} m is inside a corner`);
+      }
+    }
+    const keys = markers.map((m) => `${m.corner}|${m.distance}`);
+    assert.equal(new Set(keys).size, keys.length);
+  }
+  // Laguna Seca's big stops (Andretti hairpin, turn 5, turn 6, the Corkscrew) all get the full set.
+  const laguna = new Track(TRACKS.find((d) => d.id === 'laguna'));
+  const full = new Set(laguna.brakingMarkers().filter((m) => m.distance === 300).map((m) => m.corner));
+  assert.ok(full.size >= 4, `only ${full.size} full braking zones at Laguna`);
+});

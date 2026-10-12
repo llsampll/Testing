@@ -61,6 +61,10 @@ shifts automatically, but you can still shift by hand.
     automatic braking for corners.
   - *Normal*: ABS, traction control and steering assist.
   - *Pro*: no assists.
+- **Braking boards**: 300, 200 and 100 m boards stand before every corner
+  that needs real braking, on the outside of the approach. They only go on
+  the straight leading up to a corner, so short straights get just the boards
+  that fit, and fast kinks taken flat-out get none.
 - Start lights, lap and sector timing, position and gap readouts, a minimap,
   a results table, and engine, tire-squeal and impact sounds generated
   procedurally.

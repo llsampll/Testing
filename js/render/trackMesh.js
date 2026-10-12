@@ -341,6 +341,7 @@ export class TrackScene {
 
     // ---- Scenery ----------------------------------------------------------
     this._buildGrandstands(track, f0, heading, opts);
+    this._buildBrakingBoards(track);
     this._buildTrees(track, lowQ ? 260 : 650, opts);
     this._buildDistant(cx, cz, size, theme);
 
@@ -411,6 +412,63 @@ export class TrackScene {
     pit.rotation.y = Math.atan2(fp.tx, fp.tz);
     pit.castShadow = opts.shadows;
     this.root.add(pit);
+  }
+
+  /** 300 / 200 / 100 m braking boards on the approach to each braking corner. */
+  _buildBrakingBoards(track) {
+    const markers = track.brakingMarkers();
+    this.brakingMarkers = markers;
+    if (!markers.length) return;
+    const boardTex = (label) =>
+      canvasTexture(256, (g, n) => {
+        g.fillStyle = '#ffffff';
+        g.fillRect(0, 0, n, n);
+        g.strokeStyle = '#d62828';
+        g.lineWidth = 18;
+        g.strokeRect(9, 9, n - 18, n - 18);
+        g.fillStyle = '#111111';
+        g.font = 'bold 112px sans-serif';
+        g.textAlign = 'center';
+        g.textBaseline = 'middle';
+        g.fillText(label, n / 2, n / 2 + 6);
+      }, false);
+    const backMat = new THREE.MeshStandardMaterial({ color: 0x3a3d42, roughness: 0.8 });
+    const postMat = new THREE.MeshStandardMaterial({ color: 0x9aa0a6, roughness: 0.5, metalness: 0.6 });
+    const boardGeo = new THREE.BoxGeometry(1.8, 1.8, 0.08);
+    const postGeo = new THREE.BoxGeometry(0.1, 1.5, 0.1);
+    postGeo.translate(0, 0.75, 0);
+    const posts = new THREE.InstancedMesh(postGeo, postMat, markers.length * 2);
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const one = new THREE.Vector3(1, 1, 1);
+    let postIdx = 0;
+    for (const d of [300, 200, 100]) {
+      const list = markers.filter((mk) => mk.distance === d);
+      if (!list.length) continue;
+      // Box faces: +x, -x, +y, -y, +z (front, facing oncoming cars), -z.
+      const front = new THREE.MeshStandardMaterial({ map: boardTex(String(d)), roughness: 0.6 });
+      const boards = new THREE.InstancedMesh(boardGeo, [backMat, backMat, backMat, backMat, front, backMat], list.length);
+      list.forEach((mk, i) => {
+        const f = track.frameAt(mk.s);
+        const lat = mk.side * (track.halfWidth + track.kerbWidth + 2.5);
+        const x = f.x + f.nx * lat;
+        const z = f.z + f.nz * lat;
+        const y = lift(track, x, z);
+        // Face back down the track toward approaching drivers.
+        const yaw = Math.atan2(-f.tx, -f.tz);
+        q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+        m.compose(new THREE.Vector3(x, y + 2.35, z), q, one);
+        boards.setMatrixAt(i, m);
+        // Two legs either side of the board's centre (along its local x axis).
+        for (const off of [-0.65, 0.65]) {
+          m.compose(new THREE.Vector3(x + Math.cos(yaw) * off, y, z - Math.sin(yaw) * off), q, one);
+          posts.setMatrixAt(postIdx++, m);
+        }
+      });
+      this.root.add(boards);
+    }
+    posts.count = postIdx;
+    this.root.add(posts);
   }
 
   _buildTrees(track, count, opts) {

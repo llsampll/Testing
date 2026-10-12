@@ -419,6 +419,59 @@ export class Track {
    * Target speed along the racing line for a car, assuming it can corner at
    * `grip` g (scaled by downforce) and brake at `brakeG`.
    */
+  /**
+   * Braking marker boards (300 / 200 / 100 m) before every corner that needs
+   * real braking. A corner starts where the track's curvature first rises
+   * above a threshold; boards are only placed on the straight leading up to
+   * it, so a board never ends up inside the previous corner. Fast kinks that
+   * are taken flat out get no boards.
+   * @returns {Array<{s:number, distance:number, side:number, corner:number}>}
+   *   s: arc length of the board, distance: metres to the corner,
+   *   side: +1 left / -1 right of the road (outside of the corner)
+   */
+  brakingMarkers({ distances = [300, 200, 100], threshold = 1 / 140, slowCorner = 40 } = {}) {
+    const n = this.count;
+    const ds = this.spacing;
+    // Curvature smoothed over ~20 m so small wiggles don't count as corners.
+    const curv = new Float64Array(n);
+    for (let i = 0; i < n; i++) {
+      let sum = 0;
+      for (let k = -5; k <= 5; k++) sum += Math.abs(this.curvature[(i + k + n) % n]);
+      curv[i] = sum / 11;
+    }
+    const entries = [];
+    for (let i = 0; i < n; i++) {
+      if (curv[i] >= threshold && curv[(i - 1 + n) % n] < threshold) entries.push(i);
+    }
+    const markers = [];
+    for (const e of entries) {
+      // How long is the straight before this corner?
+      let back = 0;
+      while (back * ds < Math.max(...distances) + 40 && curv[(e - back - 1 + n) % n] < threshold) back++;
+      const approach = back * ds;
+      // How slow is the corner (cornering limit at ~1.15 g on the racing line)?
+      let maxK = 0;
+      let dir = 0;
+      for (let k = 0; k < Math.round(150 / ds); k++) {
+        const i = (e + k) % n;
+        const kk = Math.abs(this.lineCurvature[i]);
+        if (kk > maxK) {
+          maxK = kk;
+          dir = Math.sign(this.curvature[i]);
+        }
+      }
+      const vCorner = Math.sqrt((1.15 * 9.81) / Math.max(maxK, 1e-6));
+      if (vCorner > slowCorner || approach < Math.min(...distances)) continue;
+      for (const d of distances) {
+        if (d > approach - ds) continue; // the board must stand on the straight itself
+        const s = (((e * ds - d) % this.length) + this.length) % this.length;
+        // Boards stand on the outside of the corner (the side cars approach on).
+        markers.push({ s, distance: d, side: dir > 0 ? -1 : 1, corner: e * ds });
+      }
+    }
+    return markers;
+  }
+
   speedProfile(spec, grip, brakeG) {
     const n = this.count;
     const v = new Float64Array(n);
