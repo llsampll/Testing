@@ -1,7 +1,7 @@
 // Procedural low-poly car models built from extruded side profiles.
 import * as THREE from '../vendor/three.module.min.js';
 import { BLUEPRINTS } from './blueprints.js';
-import { buildBlueprintBody } from './blueprintCar.js';
+import { buildBlueprintBody, buildWheel } from './blueprintCar.js';
 
 // Side profiles: [z (forward), y (up)] in meters, traced front-bottom first.
 const PROFILES = {
@@ -208,22 +208,23 @@ export class CarMesh {
     this._addShadow(prof.width, prof.length, this.body.position.z);
   }
 
-  _buildFromBlueprint(bp, spec, { paint, glass, dark, number, shadows }) {
+  _buildFromBlueprint(bp, spec, { paint, shadows }) {
+    const color = paint.color.getHex();
+    const clearcoat = new THREE.MeshPhysicalMaterial({ color, metalness: 0.25, roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 0.45 });
+    const glass = new THREE.MeshPhysicalMaterial({ color: 0x15181b, metalness: 0.2, roughness: 0.08, clearcoat: 1, envMapIntensity: 0.4 });
     const chrome = new THREE.MeshStandardMaterial({ color: 0xd0d4da, roughness: 0.2, metalness: 1 });
-    const built = buildBlueprintBody(bp, spec, { paint, glass, dark, chrome, head: this.headMat, tail: this.tailMat });
-    built.group.traverse((o) => { if (o.isMesh && o.castShadow) o.castShadow = shadows; });
+    const built = buildBlueprintBody(bp, spec, { paint: clearcoat, glass, chrome, head: this.headMat, tail: this.tailMat });
+    built.group.traverse((o) => { if (o.isMesh) o.castShadow = shadows && o.castShadow; });
     this.body.add(built.group);
-    if (number !== null) {
-      const mat = numberMaterial(number);
-      for (const side of [-1, 1]) {
-        const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.5), mat);
-        plate.position.set(side * (built.doorHalfWidth + 0.012), 0.6, built.doorZ);
-        plate.rotation.y = (side * Math.PI) / 2;
-        this.body.add(plate);
-      }
-    }
-    // Dark centre-lock wheels, wider at the back.
-    const rimMat = new THREE.MeshStandardMaterial({ color: 0x2a2c30, roughness: 0.35, metalness: 0.7 });
+
+    // Gold multi-spoke centre-lock wheels with yellow calipers, wider at the back.
+    const style = {
+      rimMat: new THREE.MeshStandardMaterial({ color: 0x9c8455, metalness: 0.65, roughness: 0.38, envMapIntensity: 0.4 }),
+      barrelMat: new THREE.MeshStandardMaterial({ color: 0x6d6250, metalness: 0.8, roughness: 0.45, side: THREE.DoubleSide }),
+      nutMat: new THREE.MeshStandardMaterial({ color: 0x9aa0a6, metalness: 1, roughness: 0.3 }),
+      discMat: new THREE.MeshStandardMaterial({ color: 0x55585c, metalness: 0.8, roughness: 0.45 }),
+      caliperMat: new THREE.MeshStandardMaterial({ color: 0xf2c200, roughness: 0.35 }),
+    };
     const a = spec.wheelbase * (1 - spec.frontWeight);
     const b = spec.wheelbase * spec.frontWeight;
     this.wheels = [];
@@ -231,10 +232,10 @@ export class CarMesh {
     for (const [z, x, w, isFront] of [[a, front.x, front, true], [a, -front.x, front, true], [-b, rear.x, rear, false], [-b, -rear.x, rear, false]]) {
       const pivot = new THREE.Group();
       pivot.position.set(x, w.r, z);
-      const wheel = wheelParts(w.r, w.w, rimMat);
-      pivot.add(wheel);
+      const { spin, fixed } = buildWheel(w.r, w.w, Math.sign(x), style);
+      pivot.add(spin, fixed);
       this.group.add(pivot);
-      this.wheels.push({ pivot, wheel, front: isFront });
+      this.wheels.push({ pivot, wheel: spin, front: isFront });
     }
     this._addShadow(built.width, built.length, 0);
   }

@@ -87,20 +87,31 @@ easy to refine. Any track can use the same `elevation` field.
 
 ### About the Pork 711 GT3rs model
 
-The body is built from blueprint measurements rather than drawn by hand. The
-side-view and plan-view silhouettes were extracted from the drawing and
-sampled every 4 cm into roof height and half-width stations
-(`js/render/blueprints.js`). `js/render/blueprintCar.js` then lofts the body
-through those stations. Each cross-section is rounded at the sills and
-shoulders and pulled inward above the belt line to form the glasshouse. Wheel
-arches are cut at the drawing's axle positions, and the windscreen, side and
-rear glass are placed from the blueprint. Details are added on top: round
-headlamps, front-wing louvres, a three-intake nose with splitter, mirrors, a
-full-width tail-light bar, twin centre exhausts and a swan-neck wing. The
-rendered side view lines up with the blueprint's outline. Its specs follow a
-991-generation GT3 RS: 4.0 L flat-six with about 500 hp, 7-speed dual-clutch,
-1,420 kg with 39/61 weight distribution, and around 345 kg of downforce at
-top speed.
+The body is lofted from blueprint measurements. The side-view and plan-view
+silhouettes of a 991 GT3 RS drawing were traced into roof height and
+half-width stations (`js/render/blueprints.js`). Those are cleaned up (the
+wing is removed from the tail profile and pixel jitter is smoothed out), then
+each station gets a full 911 cross-section in `js/render/blueprintCar.js`:
+
+- a tucked sill and flat flanks
+- front wings that stand above the bonnet
+- a narrow glasshouse with tumblehome
+- a crowned roof
+
+Glass, carbon and trim are assigned by position: a carbon bonnet and roof,
+the windscreen and rear glass between the pillars, and a teardrop side window
+cut into the bodywork. Photo references guided the details:
+
+- upright oval headlamps with four-point LEDs
+- front-wing louvres, bonnet vents and big nose intakes
+- the large intake ahead of the rear wheel
+- a tall swan-neck wing
+- a full-width tail-light bar and centre exhausts
+- gold multi-spoke centre-lock wheels with yellow calipers
+
+The specs follow a 991-generation GT3 RS: 4.0 L flat-six with about 500 hp,
+7-speed dual-clutch, 1,420 kg with 39/61 weight distribution, and around
+345 kg of downforce at top speed.
 
 Any car can use a blueprint body: add an entry to `BLUEPRINTS` and set the
 car's `body` to its key.

@@ -108,7 +108,7 @@ export const CARS = [
     name: 'Pork 711 GT3rs',
     class: 'S',
     description: 'Rear-engined flat-six screaming to 9,000 rpm. Huge traction out of corners - but respect the lift-off.',
-    color: 0xf26b1d,
+    color: 0xc4c8cd, // GT silver
     mass: 1420,
     inertiaScale: 0.92,
     wheelbase: 2.456,
