@@ -69,7 +69,8 @@ function ribbon(track, inner, outer, { y = 0, vScale = 1 / 8, step = 1, filter =
     const a = typeof inner === 'function' ? inner(k) : inner;
     const b = typeof outer === 'function' ? outer(k) : outer;
     const base = pos.length / 3;
-    pos.push(px + nx * a, y, pz + nz * a, px + nx * b, y, pz + nz * b);
+    const yy = y + track.h[k];
+    pos.push(px + nx * a, yy, pz + nz * a, px + nx * b, yy, pz + nz * b);
     const v = i * track.spacing * vScale;
     uv.push(0, v, 1, v);
     if (colors) {
@@ -102,7 +103,7 @@ function wall(track, offset, height, side) {
     const k = i % n;
     const x = track.px[k] + track.nx[k] * offset;
     const z = track.pz[k] + track.nz[k] * offset;
-    pos.push(x, 0, z, x, height, z);
+    pos.push(x, track.h[k], z, x, track.h[k] + height, z);
     const v = i * track.spacing;
     uv.push(v / 4, 0, v / 4, 1);
     if (i > 0) {
@@ -160,12 +161,22 @@ export class TrackScene {
     const size = Math.max(maxX - minX, maxZ - minZ) + 1600;
     const grassTex = grassTexture(theme.grass);
     grassTex.repeat.set(size / 24, size / 24);
+    // Terrain: flat for flat circuits, otherwise a heightfield that rolls with
+    // the road (kept a little below it so the road surface always wins).
+    const hilly = track.hasElevation;
+    const seg = hilly ? (lowQ ? 150 : 210) : 1;
+    const groundGeo = new THREE.PlaneGeometry(size, size, seg, seg);
+    groundGeo.rotateX(-Math.PI / 2);
+    groundGeo.translate(cx, 0, cz);
+    const gp = groundGeo.attributes.position;
+    for (let i = 0; i < gp.count; i++) {
+      gp.setY(i, hilly ? track.groundHeight(gp.getX(i), gp.getZ(i)) - (lowQ ? 0.9 : 0.6) : -0.08);
+    }
+    groundGeo.computeVertexNormals();
     const ground = new THREE.Mesh(
-      new THREE.PlaneGeometry(size, size),
+      groundGeo,
       new THREE.MeshStandardMaterial({ map: grassTex, roughness: 1, polygonOffset: true, polygonOffsetFactor: 6, polygonOffsetUnits: 6 }),
     );
-    ground.rotation.x = -Math.PI / 2;
-    ground.position.set(cx, -0.08, cz);
     ground.receiveShadow = opts.shadows;
     this.root.add(ground);
 
@@ -227,7 +238,7 @@ export class TrackScene {
     startLine.rotation.order = 'YXZ';
     startLine.rotation.y = heading;
     startLine.rotation.x = -Math.PI / 2;
-    startLine.position.set(f0.x, 0.08, f0.z);
+    startLine.position.set(f0.x, 0.08 + track.heightAtS(0), f0.z);
     this.root.add(startLine);
 
     const gridMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
@@ -241,7 +252,7 @@ export class TrackScene {
       mark.rotation.order = 'YXZ';
       mark.rotation.y = Math.atan2(f.tx, f.tz);
       mark.rotation.x = -Math.PI / 2;
-      mark.position.set(f.x + f.nx * lat, 0.08, f.z + f.nz * lat);
+      mark.position.set(f.x + f.nx * lat, 0.08 + track.heightAtS(s), f.z + f.nz * lat);
       this.root.add(mark);
     }
 
@@ -279,7 +290,7 @@ export class TrackScene {
     const bannerMesh = new THREE.Mesh(new THREE.PlaneGeometry(4, 1.2), new THREE.MeshBasicMaterial({ map: banner }));
     bannerMesh.position.set(0, 6.6, 0.31);
     gantry.add(bannerMesh);
-    gantry.position.set(f0.x, 0, f0.z);
+    gantry.position.set(f0.x, track.heightAtS(0), f0.z);
     gantry.rotation.y = heading;
     this.root.add(gantry);
 
@@ -342,7 +353,7 @@ export class TrackScene {
       roof.position.set(0, 9.5, 5);
       roof.castShadow = opts.shadows;
       g.add(roof);
-      g.position.set(f.x + f.nx * lat, 0, f.z + f.nz * lat);
+      g.position.set(f.x + f.nx * lat, track.heightAtS(offsetS) - 0.3, f.z + f.nz * lat);
       // Face the track.
       g.rotation.y = Math.atan2(f.tx, f.tz) + (side > 0 ? Math.PI / 2 : -Math.PI / 2);
       this.root.add(g);
@@ -351,7 +362,7 @@ export class TrackScene {
     const pit = new THREE.Mesh(new THREE.BoxGeometry(10, 6, 120), new THREE.MeshStandardMaterial({ color: 0xdfe3e8, roughness: 0.6 }));
     const fp = track.frameAt(track.length - 70);
     const latP = -(track.wallDist + 10);
-    pit.position.set(fp.x + fp.nx * latP, 3, fp.z + fp.nz * latP);
+    pit.position.set(fp.x + fp.nx * latP, 3 + track.heightAtS(track.length - 70) - 0.3, fp.z + fp.nz * latP);
     pit.rotation.y = Math.atan2(fp.tx, fp.tz);
     pit.castShadow = opts.shadows;
     this.root.add(pit);
@@ -383,7 +394,7 @@ export class TrackScene {
       track.query(x, z, -1, query);
       if (query.distance < track.wallDist + 5) continue;
       const sc = 0.7 + Math.random() * 0.8;
-      p.set(x, 0, z);
+      p.set(x, track.groundHeight(x, z) - 0.3, z);
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), Math.random() * Math.PI);
       s.set(sc, sc * (0.8 + Math.random() * 0.5), sc);
       m.compose(p, q, s);
@@ -406,7 +417,9 @@ export class TrackScene {
       const a = (i / 28) * Math.PI * 2 + Math.random() * 0.1;
       const h = 30 + Math.random() * 70;
       const hill = new THREE.Mesh(new THREE.ConeGeometry(60 + Math.random() * 80, h, 6), hillMat);
-      hill.position.set(cx + Math.cos(a) * r, h / 2 - 2, cz + Math.sin(a) * r);
+      const hx = cx + Math.cos(a) * r;
+      const hz = cz + Math.sin(a) * r;
+      hill.position.set(hx, this.track.groundHeight(hx, hz) + h / 2 - 2, hz);
       this.root.add(hill);
     }
   }
@@ -444,8 +457,9 @@ export class TrackScene {
       const nx = track.rnx[k];
       const nz = track.rnz[k];
       const w = 0.45;
-      pos.setXYZ(i * 2, x + nx * w, 0.1, z + nz * w);
-      pos.setXYZ(i * 2 + 1, x - nx * w, 0.1, z - nz * w);
+      const y = 0.1 + track.h[k];
+      pos.setXYZ(i * 2, x + nx * w, y, z + nz * w);
+      pos.setXYZ(i * 2 + 1, x - nx * w, y, z - nz * w);
       // Compare speed with what's needed at that point (and the distance left to slow down).
       const target = speedProfile[k];
       const excess = u - target;

@@ -109,3 +109,46 @@ test('steering left turns the car left', () => {
   run(car, 1);
   assert.ok(car.heading > 0.1, `heading ${car.heading}`);
 });
+
+test('uphill is slower than flat, downhill is faster, and a parked car holds on a slope', () => {
+  const accel = (grade) => {
+    const car = new Vehicle(CARS[1], ASSIST_PRESETS.normal);
+    car.gradeLong = grade;
+    car.input.throttle = 1;
+    run(car, 6);
+    return car.u;
+  };
+  const flat = accel(0);
+  assert.ok(accel(0.1) < flat - 3, 'a 10% climb should cost speed');
+  assert.ok(accel(-0.1) > flat + 3, 'a 10% descent should add speed');
+
+  const parked = new Vehicle(CARS[1]);
+  parked.gradeLong = -0.12;
+  run(parked, 5);
+  assert.ok(Math.abs(parked.u) < 0.3, `rolled away at ${parked.u}`);
+});
+
+test('braking on a descent takes longer than on the flat; crests lighten the car', () => {
+  const stop = (grade) => {
+    const car = new Vehicle(CARS[2], ASSIST_PRESETS.normal);
+    car.gradeLong = grade;
+    car.u = 40;
+    for (const w of car.wheels) w.omega = car.u / CARS[2].wheelRadius;
+    car.input.brake = 1;
+    const z0 = car.z;
+    run(car, 20, () => car.u > 0.1);
+    return car.z - z0;
+  };
+  assert.ok(stop(-0.15) > stop(0) * 1.1);
+
+  const load = (crest) => {
+    const car = new Vehicle(CARS[0], ASSIST_PRESETS.normal);
+    car.u = 40;
+    car.crest = crest;
+    car.input.throttle = 0.2;
+    run(car, 0.1);
+    return car.wheels.reduce((a, w) => a + w.load, 0);
+  };
+  assert.ok(load(-0.004) < load(0) * 0.8, 'crest should unload the tires');
+  assert.ok(load(0.004) > load(0) * 1.15, 'dip should load the tires');
+});

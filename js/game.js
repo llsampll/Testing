@@ -360,8 +360,8 @@ export class Game {
     // Shadow camera follows the player.
     if (this.sun.castShadow) {
       const pv = this.player.vehicle;
-      this.sun.position.set(pv.x + 40, 120, pv.z + 30);
-      this.sun.target.position.set(pv.x, 0, pv.z);
+      this.sun.position.set(pv.x + 40, pv.y + 120, pv.z + 30);
+      this.sun.target.position.set(pv.x, pv.y, pv.z);
     }
     this.sky.position.copy(this.camera.position);
 
@@ -474,20 +474,23 @@ export class Game {
       const height = far ? 3.8 : 2.5;
       const hx = Math.sin(this.camHeading);
       const hz = Math.cos(this.camHeading);
-      const desired = new THREE.Vector3(v.x - hx * dist, height, v.z - hz * dist);
+      // Stay above the road behind us too, so a dip or the Corkscrew drop never buries the camera.
+      const baseY = this.track.hasElevation ? Math.max(v.y, this.track.heightAtS(this.player.s - dist)) : 0;
+      const desired = new THREE.Vector3(v.x - hx * dist, baseY + height, v.z - hz * dist);
       if (!this.camPos) this.camPos = desired.clone();
       this.camPos.lerp(desired, Math.min(1, dt * 12));
       cam.position.copy(this.camPos);
-      cam.lookAt(v.x + fx * 4, far ? 0.9 : 0.55, v.z + fz * 4);
+      cam.lookAt(v.x + fx * 4, v.y + (far ? 0.9 : 0.55), v.z + fz * 4);
     } else {
       const forwardOff = this.cameraMode === 'hood' ? 0.6 : 2.0;
       const h = this.cameraMode === 'hood' ? 1.3 : 0.75;
       const lx = Math.cos(v.heading);
       const lz = -Math.sin(v.heading);
       const roll = clamp(v.ay * 0.004, -0.05, 0.05);
-      cam.position.set(v.x + fx * forwardOff, h, v.z + fz * forwardOff);
+      const rise = Math.tan(v.slope || 0);
+      cam.position.set(v.x + fx * forwardOff, v.y + h + rise * forwardOff, v.z + fz * forwardOff);
       cam.up.set(lx * roll, 1, lz * roll).normalize();
-      cam.lookAt(v.x + fx * 30, h - 0.4, v.z + fz * 30);
+      cam.lookAt(v.x + fx * 30, v.y + h - 0.4 + rise * 30, v.z + fz * 30);
       cam.up.set(0, 1, 0);
     }
 

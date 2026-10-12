@@ -133,7 +133,7 @@ function drawTrackPreview(canvas, def) {
   g.beginPath();
   g.arc(ox + (track.pz[0] - minZ) * scale, oy + (track.px[0] - minX) * scale, 4 * dpr, 0, Math.PI * 2);
   g.fill();
-  return track.length;
+  return { length: track.length, relief: track.relief };
 }
 
 function renderTracks() {
@@ -144,8 +144,9 @@ function renderTracks() {
     el.className = 'card';
     el.dataset.id = def.id;
     el.innerHTML = `<div class="title">${def.name}</div><canvas></canvas><div class="desc"></div><div class="record"></div>`;
-    const len = drawTrackPreview(el.querySelector('canvas'), def);
-    el.querySelector('.desc').textContent = `${(len / 1000).toFixed(2)} km · ${def.description}`;
+    const { length: len, relief } = drawTrackPreview(el.querySelector('canvas'), def);
+    const climb = relief > 1 ? ` · ${Math.round(relief)} m elevation change` : '';
+    el.querySelector('.desc').textContent = `${(len / 1000).toFixed(2)} km${climb} · ${def.description}`;
     el.addEventListener('click', () => {
       settings.track = def.id;
       save();

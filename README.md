@@ -49,8 +49,8 @@ shifts automatically, but you can still shift by hand.
 - **3 cars**: an FWD hot hatch (Class C), an RWD V8 coupe (Class B) and a
   GT3 race car with downforce (Class A).
 - **3 circuits**: *Harbor Point GP* (2.9 km, fast and flowing), *Red
-  Canyon Ring* (2.2 km, technical) and *Laguna Seca* (3.6 km, modelled on
-  the real Monterey circuit).
+  Canyon Ring* (2.2 km, technical) and *Laguna Seca* (3.6 km with 54 m of
+  elevation, traced from the real Monterey circuit map).
 - **Forza-style driving line**: the line ahead of you is green where you can
   accelerate, yellow where you should lift, and red where you need to brake.
   The colors are worked out live from your speed.
@@ -67,11 +67,19 @@ shifts automatically, but you can still shift by hand.
 
 ### About the Laguna Seca layout
 
-It is a hand-drawn approximation of the real circuit's 11 turns (the fast
-T1, the Andretti hairpin, the climb through T3–T6, the Corkscrew, Rainey
-Curve and the final double right), scaled to the real 3.6 km lap. It is not
-built from surveyed GPS data, and the game world is flat, so the Corkscrew's
-~18 m drop isn't modelled yet.
+The centerline was traced from the official circuit map: the outline was
+extracted from the image, smoothed and scaled to the real 3.60 km lap, so the
+front straight, Andretti hairpin, the loop out to turns 5 and 6, Rahal
+Straight, the Corkscrew notch, Rainey Curve and the final corner all sit where
+they do on the map. It runs counter-clockwise.
+
+Elevation is modelled with about 54 m of relief (the real circuit has about
+55 m): the road climbs from the start line to a crest at turn 6, rolls down
+Rahal Straight, then drops roughly 18 m through the Corkscrew (steepest grade
+about 18%) and on down to the final corner. The height profile is a hand-built
+approximation from published figures, not survey data, and it is defined by a
+short list of `[distance, height]` anchors in `js/track/trackData.js`, so it's
+easy to refine. Any track can use the same `elevation` field.
 
 ## Physics
 
@@ -102,6 +110,12 @@ renderer. It runs at a fixed 240 Hz.
     brakes the outside front wheel.
   - Steering assist: limits steering lock to what the front tires can use at
     the current speed, and countersteers automatically.
+- **Hills**: the road's slope pulls the car back uphill and pushes it
+  forward downhill, braking distances grow on a descent, and weight transfer
+  is calculated from the contact-patch forces so a climb loads the rear. Dips
+  press the tires into the road (more grip) and crests unload them (less
+  grip). The AI plans its braking and corner speeds with all of this, and
+  the scenery, camera and car body pitch follow the terrain.
 - **Surfaces and contact**: asphalt, kerbs and grass each have their own grip
   and drag. Barriers and car-to-car contact are resolved with impulses that
   include spin, so a hit can turn the car.
@@ -133,6 +147,6 @@ js/ai.js                      AI drivers
 js/input.js                   tilt / touch / keyboard / gamepad
 js/audio.js                   procedural Web Audio sound
 js/physics/                   tire model, vehicle model, car specs
-js/track/                     track spline, racing line, speed profiles, layouts
+js/track/                     track spline, elevation, racing line, speed profiles, layouts
 js/render/                    procedural car and track meshes
 ```

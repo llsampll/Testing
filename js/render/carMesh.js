@@ -205,8 +205,10 @@ export class CarMesh {
 
   /** Sync with the physics state. */
   update(v, dt) {
-    this.group.position.set(v.x, 0, v.z);
+    this.group.position.set(v.x, v.y ?? 0, v.z);
+    this.group.rotation.order = 'YXZ';
     this.group.rotation.y = v.heading;
+    this.group.rotation.x = -(v.slope ?? 0); // nose up on a climb
     // Visual body roll and pitch from accelerations.
     const roll = Math.max(-0.07, Math.min(0.07, v.ay * 0.0055));
     const pitch = Math.max(-0.05, Math.min(0.05, -v.ax * 0.004));

@@ -83,6 +83,8 @@ export class Vehicle {
 
   reset(x, z, heading) {
     this.x = x;
+    this.y = 0;
+    this.slope = 0;       // pitch angle of the road under the car (rad, nose up positive)
     this.z = z;
     this.heading = heading;
     this.u = 0;
@@ -90,6 +92,11 @@ export class Vehicle {
     this.r = 0;
     this.ax = 0;
     this.ay = 0;
+    // Terrain, set each step by the race: slope of the road along / across the
+    // car (dh/dx), and vertical curvature (positive in a dip, negative on a crest).
+    this.gradeLong = 0;
+    this.gradeLat = 0;
+    this.crest = 0;
     this.steerAngle = 0;
     this.gear = 1;
     this.rpm = this.spec.idleRpm;
@@ -278,6 +285,8 @@ export class Vehicle {
     this._autoGearbox(dt, throttle, brake);
     if (this.gear < 0) [throttle, brake] = [brake, throttle];
     if (this.shiftTimer > 0) this.shiftTimer -= dt;
+    // Hill-hold: park the car gently when stopped with no pedals, so it doesn't roll away.
+    if (Math.abs(this.u) < 0.4 && throttle < 0.02 && brake < 0.02) brake = 0.25;
 
     // ---- Steering ----------------------------------------------------------
     let steerTarget = clamp(inp.steer, -1, 1) * this.maxSteerAt(Math.abs(this.u));
@@ -336,8 +345,12 @@ export class Vehicle {
 
     // ---- Wheel loads (static + weight transfer + aero) --------------------
     const downforce = 0.5 * AIR_DENSITY * s.liftArea * this.u * this.u;
-    const frontStatic = (m * G * this.b) / s.wheelbase;
-    const rearStatic = (m * G * this.a) / s.wheelbase;
+    // Normal load: cos(slope) of the weight, plus the vertical acceleration
+    // from driving through a dip (more load) or over a crest (less).
+    const slopeSq = this.gradeLong * this.gradeLong + this.gradeLat * this.gradeLat;
+    const loadScale = clamp(1 / Math.sqrt(1 + slopeSq) + (this.crest * this.u * this.u) / G, 0.2, 2.4);
+    const frontStatic = (m * G * this.b * loadScale) / s.wheelbase;
+    const rearStatic = (m * G * this.a * loadScale) / s.wheelbase;
     const longTransfer = (m * this.ax * s.cgHeight) / s.wheelbase;
     const latTransfer = (m * this.ay * s.cgHeight) / s.trackWidth;
     const frontAxle = frontStatic - longTransfer + downforce * s.aeroBalance;
@@ -458,10 +471,15 @@ export class Vehicle {
     fySum -= 0.5 * AIR_DENSITY * s.dragArea * 2 * this.v * Math.abs(this.v);
 
     // ---- Integrate body (rotating frame) -----------------------------------
+    // Weight transfer follows the forces at the contact patches, so measure it
+    // before gravity's pull along the slope is added.
     const axInertial = fxSum / m;
     const ayInertial = fySum / m;
-    this.u += (axInertial + this.r * this.v) * dt;
-    this.v += (ayInertial - this.r * this.u) * dt;
+    const slopeNorm = 1 / Math.sqrt(1 + slopeSq);
+    fxSum -= m * G * this.gradeLong * slopeNorm;
+    fySum -= m * G * this.gradeLat * slopeNorm;
+    this.u += (fxSum / m + this.r * this.v) * dt;
+    this.v += (fySum / m - this.r * this.u) * dt;
     this.r += (mz / this.iz) * dt;
 
     // Let the car come to rest instead of creeping at near-zero speed.

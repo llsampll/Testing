@@ -29,6 +29,42 @@ function catmullRom(p0, p1, p2, p3, t) {
   return [b1[0] + (b2[0] - b1[0]) * ((tt - t1) / (t2 - t1)), b1[1] + (b2[1] - b1[1]) * ((tt - t1) / (t2 - t1))];
 }
 
+
+/**
+ * Periodic monotone cubic interpolation (Fritsch-Carlson). Unlike a plain
+ * Catmull-Rom it never overshoots between anchors, so a steep drop like the
+ * Corkscrew doesn't ring into fake bumps.
+ */
+function periodicPchip(anchors, period) {
+  const xs = [];
+  const ys = [];
+  for (let k = -1; k <= 1; k++) for (const [x, y] of anchors) { xs.push(x + k * period); ys.push(y); }
+  const n = xs.length;
+  const h = [];
+  const delta = [];
+  for (let i = 0; i < n - 1; i++) {
+    h.push(xs[i + 1] - xs[i]);
+    delta.push((ys[i + 1] - ys[i]) / h[i]);
+  }
+  const d = new Array(n).fill(0);
+  for (let i = 1; i < n - 1; i++) {
+    if (delta[i - 1] * delta[i] <= 0) continue;
+    const w1 = 2 * h[i] + h[i - 1];
+    const w2 = h[i] + 2 * h[i - 1];
+    d[i] = (w1 + w2) / (w1 / delta[i - 1] + w2 / delta[i]);
+  }
+  return (s) => {
+    const x = ((s % period) + period) % period;
+    let i = anchors.length; // start of the middle copy
+    while (i < n - 2 && xs[i + 1] < x) i++;
+    while (i > 0 && xs[i] > x) i--;
+    const t = (x - xs[i]) / h[i];
+    const t2 = t * t;
+    const t3 = t2 * t;
+    return (2 * t3 - 3 * t2 + 1) * ys[i] + (t3 - 2 * t2 + t) * h[i] * d[i] + (-2 * t3 + 3 * t2) * ys[i + 1] + (t3 - t2) * h[i] * d[i + 1];
+  };
+}
+
 export const SURFACE = {
   asphalt: { grip: 1.0, drag: 0.0 },
   kerb: { grip: 0.93, drag: 0.004 },
@@ -44,6 +80,7 @@ export class Track {
     this.wallDist = this.halfWidth + def.runoff;
     const scale = def.scale ?? 1;
     this._buildCenterline(def.points.map(([x, z]) => [x * scale, z * scale]));
+    this._buildElevation(def.elevation);
     this._buildRacingLine();
   }
 
@@ -120,6 +157,87 @@ export class Track {
       // Our left is +x when heading +z, so a left turn has negative cross.
       curv[i] = (-2 * cross) / (la * lb * lc || 1);
     }
+  }
+
+  /**
+   * Per-sample height `h`, longitudinal grade `grade` (dh/ds, uphill positive)
+   * and vertical curvature `crest` (d2h/ds2: positive in a dip where the car
+   * is pressed into the road, negative over a crest where it gets light).
+   */
+  _buildElevation(anchors) {
+    const n = this.count;
+    this.h = new Float64Array(n);
+    this.grade = new Float64Array(n);
+    this.crest = new Float64Array(n);
+    this.hasElevation = !!(anchors && anchors.length);
+    if (this.hasElevation) {
+      const f = periodicPchip(anchors, this.length);
+      for (let i = 0; i < n; i++) this.h[i] = f(i * this.spacing);
+      for (let pass = 0; pass < 3; pass++) {
+        const c = Float64Array.from(this.h);
+        for (let i = 0; i < n; i++) this.h[i] = (c[(i - 1 + n) % n] + 2 * c[i] + c[(i + 1) % n]) / 4;
+      }
+      const ds = this.spacing;
+      for (let i = 0; i < n; i++) {
+        const a = (i - 1 + n) % n;
+        const b = (i + 1) % n;
+        this.grade[i] = (this.h[b] - this.h[a]) / (2 * ds);
+        this.crest[i] = (this.h[b] - 2 * this.h[i] + this.h[a]) / (ds * ds);
+      }
+      const c = Float64Array.from(this.crest);
+      for (let i = 0; i < n; i++) {
+        let sum = 0;
+        for (let k = -5; k <= 5; k++) sum += c[(i + k + n) % n];
+        this.crest[i] = sum / 11;
+      }
+    }
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < n; i++) {
+      lo = Math.min(lo, this.h[i]);
+      hi = Math.max(hi, this.h[i]);
+    }
+    this.relief = hi - lo;
+    // Coarse copy of the centerline for ground-height queries.
+    const step = 4;
+    const m = Math.ceil(n / step);
+    this._gx = new Float64Array(m);
+    this._gz = new Float64Array(m);
+    this._gh = new Float64Array(m);
+    for (let j = 0; j < m; j++) {
+      const i = j * step;
+      this._gx[j] = this.px[i];
+      this._gz[j] = this.pz[i];
+      this._gh[j] = this.h[i];
+    }
+  }
+
+  /** Road height at arc length s (linear between samples). */
+  heightAtS(s) {
+    const f = (((s % this.length) + this.length) % this.length) / this.spacing;
+    const i = Math.floor(f) % this.count;
+    const j = (i + 1) % this.count;
+    return this.h[i] + (this.h[j] - this.h[i]) * (f - Math.floor(f));
+  }
+
+  /**
+   * Terrain height for scenery: an inverse-distance blend of nearby road
+   * heights, so the land rolls with the circuit and settles toward the mean
+   * elevation far away.
+   */
+  groundHeight(x, z) {
+    if (!this.hasElevation) return 0;
+    let sw = 0;
+    let sh = 0;
+    for (let j = 0; j < this._gx.length; j++) {
+      const dx = this._gx[j] - x;
+      const dz = this._gz[j] - z;
+      const d2 = dx * dx + dz * dz;
+      const w = 1 / (d2 * Math.sqrt(d2) + 8000);
+      sw += w;
+      sh += w * this._gh[j];
+    }
+    return sh / sw;
   }
 
   wrapIndex(i) {
@@ -251,15 +369,17 @@ export class Track {
     const k = (0.5 * 1.225 * spec.liftArea) / spec.mass;
     for (let i = 0; i < n; i++) {
       const kappa = Math.abs(this.lineCurvature[i]);
-      const denom = kappa - grip * k;
+      // Downforce and dips add grip; crests take it away.
+      const denom = kappa - grip * (k + this.crest[i]);
       v[i] = denom <= 1e-5 ? 95 : Math.min(95, Math.sqrt((grip * g) / denom));
     }
-    // Backward pass: make sure we can brake down to every corner speed.
+    // Backward pass: make sure we can brake down to every corner speed
+    // (uphill helps the brakes, downhill fights them).
     for (let pass = 0; pass < 2; pass++) {
       for (let i = n - 1; i >= 0; i--) {
         const next = v[(i + 1) % n];
         const ds = this.spacing;
-        const decel = brakeG * g + k * next * next * 0.5;
+        const decel = Math.max(0.25 * g, brakeG * g + g * this.grade[i] + k * next * next * 0.5);
         v[i] = Math.min(v[i], Math.sqrt(next * next + 2 * decel * ds));
       }
     }

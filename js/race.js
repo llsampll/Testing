@@ -75,6 +75,7 @@ export class Race {
       state.trackIndex = q.index;
       state.s = q.s;
       state.lateral = q.lateral;
+      v.y = this.track.heightAtS(q.s);
       // Cars behind the line are still on "lap 0" of the approach.
       state.lap = q.s > this.track.length / 2 ? -1 : 0;
       state.distance = state.lap * this.track.length + q.s;
@@ -155,6 +156,7 @@ export class Race {
         w.grip = surf.grip;
         w.drag = surf.drag;
       }
+      this._applyTerrain(c);
       v.step(dt);
     }
 
@@ -163,6 +165,22 @@ export class Race {
 
     for (const c of this.cars) this._updateProgress(c);
     this._updateStandings();
+  }
+
+  /** Feed the road's slope and vertical curvature under this car into the physics. */
+  _applyTerrain(c) {
+    const track = this.track;
+    if (!track.hasElevation) return;
+    const v = c.vehicle;
+    const i = c.trackIndex;
+    const sh = Math.sin(v.heading);
+    const ch = Math.cos(v.heading);
+    const along = track.tx[i] * sh + track.tz[i] * ch;      // car forward . road tangent
+    const across = track.tx[i] * ch - track.tz[i] * sh;     // car left . road tangent
+    v.gradeLong = track.grade[i] * along;
+    v.gradeLat = track.grade[i] * across;
+    v.crest = track.crest[i] * along * along;
+    v.slope = Math.atan(v.gradeLong);
   }
 
   _updateProgress(c) {
@@ -196,6 +214,7 @@ export class Race {
       c.lap -= 1; // reversed back over the line
     }
     c.distance = c.lap * track.length + c.s;
+    v.y = track.heightAtS(c.s);
   }
 
   _updateStandings() {
