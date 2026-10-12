@@ -34,6 +34,10 @@ try {
 } catch {
   /* ignore */
 }
+// Drop saved choices that no longer exist (e.g. a removed car or track).
+if (!CARS.some((c) => c.id === settings.car)) settings.car = DEFAULTS.car;
+if (!TRACKS.some((t) => t.id === settings.track)) settings.track = DEFAULTS.track;
+
 const save = () => {
   try {
     localStorage.setItem('apex-settings', JSON.stringify(settings));

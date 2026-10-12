@@ -46,10 +46,8 @@ shifts automatically, but you can still shift by hand.
 
 ## What's in it
 
-- **4 cars**: an FWD hot hatch (Class C), an RWD V8 coupe (Class B), a GT3
-  race car with downforce (Class A), and the **Pork 711 GT3rs** (Class S).
-  The GT3rs is a rear-engined, 9,000 rpm flat-six road racer whose body was
-  modelled from a blueprint (see below).
+- **3 cars**: an FWD hot hatch (Class C), an RWD V8 coupe (Class B) and a
+  GT3 race car with downforce (Class A).
 - **3 circuits**: *Harbor Point GP* (2.9 km, fast and flowing), *Red
   Canyon Ring* (2.2 km, technical) and *Laguna Seca* (3.6 km with 54 m of
   elevation, traced from the real Monterey circuit map).
@@ -84,37 +82,6 @@ about 18%) and on down to the final corner. The height profile is a hand-built
 approximation from published figures, not survey data, and it is defined by a
 short list of `[distance, height]` anchors in `js/track/trackData.js`, so it's
 easy to refine. Any track can use the same `elevation` field.
-
-### About the Pork 711 GT3rs model
-
-The body is lofted from blueprint measurements. The side-view and plan-view
-silhouettes of a 991 GT3 RS drawing were traced into roof height and
-half-width stations (`js/render/blueprints.js`). Those are cleaned up (the
-wing is removed from the tail profile and pixel jitter is smoothed out), then
-each station gets a full 911 cross-section in `js/render/blueprintCar.js`:
-
-- a tucked sill and flat flanks
-- front wings that stand above the bonnet
-- a narrow glasshouse with tumblehome
-- a crowned roof
-
-Glass, carbon and trim are assigned by position: a carbon bonnet and roof,
-the windscreen and rear glass between the pillars, and a teardrop side window
-cut into the bodywork. Photo references guided the details:
-
-- upright oval headlamps with four-point LEDs
-- front-wing louvres, bonnet vents and big nose intakes
-- the large intake ahead of the rear wheel
-- a tall swan-neck wing
-- a full-width tail-light bar and centre exhausts
-- gold multi-spoke centre-lock wheels with yellow calipers
-
-The specs follow a 991-generation GT3 RS: 4.0 L flat-six with about 500 hp,
-7-speed dual-clutch, 1,420 kg with 39/61 weight distribution, and around
-345 kg of downforce at top speed.
-
-Any car can use a blueprint body: add an entry to `BLUEPRINTS` and set the
-car's `body` to its key.
 
 ## Physics
 
@@ -183,5 +150,5 @@ js/input.js                   tilt / touch / keyboard / gamepad
 js/audio.js                   procedural Web Audio sound
 js/physics/                   tire model, vehicle model, car specs
 js/track/                     track spline, elevation, racing line, speed profiles, layouts
-js/render/                    procedural car and track meshes, blueprint-lofted bodies
+js/render/                    procedural car and track meshes
 ```

@@ -1,7 +1,5 @@
 // Procedural low-poly car models built from extruded side profiles.
 import * as THREE from '../vendor/three.module.min.js';
-import { BLUEPRINTS } from './blueprints.js';
-import { buildBlueprintBody, buildWheel } from './blueprintCar.js';
 
 // Side profiles: [z (forward), y (up)] in meters, traced front-bottom first.
 const PROFILES = {
@@ -55,7 +53,7 @@ function extrudeProfile(points, width, bevel) {
 }
 
 let sharedWheel = null;
-function wheelParts(radius, width = null, rimMat = null) {
+function wheelParts(radius) {
   if (!sharedWheel) {
     const tire = new THREE.CylinderGeometry(1, 1, 0.26, 18);
     tire.rotateZ(Math.PI / 2);
@@ -73,33 +71,14 @@ function wheelParts(radius, width = null, rimMat = null) {
   const w = sharedWheel;
   const group = new THREE.Group();
   const t = new THREE.Mesh(w.tire, w.tireMat);
-  const r = new THREE.Mesh(w.rim, rimMat ?? w.rimMat);
-  const s1 = new THREE.Mesh(w.spoke, rimMat ?? w.rimMat);
-  const s2 = new THREE.Mesh(w.spoke, rimMat ?? w.rimMat);
+  const r = new THREE.Mesh(w.rim, w.rimMat);
+  const s1 = new THREE.Mesh(w.spoke, w.rimMat);
+  const s2 = new THREE.Mesh(w.spoke, w.rimMat);
   s2.rotation.x = Math.PI / 2;
   t.castShadow = true;
   group.add(t, r, s1, s2);
   group.scale.setScalar(radius);
-  // The tire is 0.26 units wide before scaling; stretch it to a real width.
-  if (width) group.scale.x = width / 0.26;
   return group;
-}
-
-/** Door number roundel (canvas texture). */
-function numberMaterial(number) {
-  const c = document.createElement('canvas');
-  c.width = c.height = 64;
-  const g = c.getContext('2d');
-  g.fillStyle = '#fff';
-  g.beginPath();
-  g.arc(32, 32, 30, 0, Math.PI * 2);
-  g.fill();
-  g.fillStyle = '#111';
-  g.font = 'bold 34px sans-serif';
-  g.textAlign = 'center';
-  g.textBaseline = 'middle';
-  g.fillText(String(number), 32, 34);
-  return new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c), transparent: true });
 }
 
 let shadowTexture = null;
@@ -119,6 +98,7 @@ function blobShadowTexture() {
 
 export class CarMesh {
   constructor(spec, color, { shadows = false, number = null } = {}) {
+    const prof = PROFILES[spec.body] ?? PROFILES.coupe;
     this.spec = spec;
     this.group = new THREE.Group();
     this.body = new THREE.Group();
@@ -127,15 +107,6 @@ export class CarMesh {
     const paint = new THREE.MeshStandardMaterial({ color, roughness: 0.32, metalness: 0.35 });
     const glass = new THREE.MeshStandardMaterial({ color: 0x0d1520, roughness: 0.08, metalness: 0.9 });
     const dark = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.7 });
-    this.headMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff4d6, emissiveIntensity: 0.8 });
-    this.tailMat = new THREE.MeshStandardMaterial({ color: 0x550000, emissive: 0xff1a1a, emissiveIntensity: 0.4 });
-
-    const bp = BLUEPRINTS[spec.body];
-    if (bp) {
-      this._buildFromBlueprint(bp, spec, { paint, glass, dark, number, shadows });
-      return;
-    }
-    const prof = PROFILES[spec.body] ?? PROFILES.coupe;
 
     const body = new THREE.Mesh(extrudeProfile(prof.body, prof.width, 0.07), paint);
     body.castShadow = shadows;
@@ -149,6 +120,8 @@ export class CarMesh {
     this.body.add(roof);
 
     // Lights.
+    this.headMat = new THREE.MeshStandardMaterial({ color: 0xffffff, emissive: 0xfff4d6, emissiveIntensity: 0.8 });
+    this.tailMat = new THREE.MeshStandardMaterial({ color: 0x550000, emissive: 0xff1a1a, emissiveIntensity: 0.4 });
     const front = prof.body[2][0];
     const rear = prof.body[prof.body.length - 1][0];
     for (const side of [-1, 1]) {
@@ -178,7 +151,21 @@ export class CarMesh {
     }
 
     if (number !== null) {
-      const mat = numberMaterial(number);
+      // Door number roundel (canvas texture).
+      const c = document.createElement('canvas');
+      c.width = c.height = 64;
+      const g = c.getContext('2d');
+      g.fillStyle = '#fff';
+      g.beginPath();
+      g.arc(32, 32, 30, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = '#111';
+      g.font = 'bold 34px sans-serif';
+      g.textAlign = 'center';
+      g.textBaseline = 'middle';
+      g.fillText(String(number), 32, 34);
+      const tex = new THREE.CanvasTexture(c);
+      const mat = new THREE.MeshBasicMaterial({ map: tex, transparent: true });
       for (const side of [-1, 1]) {
         const plate = new THREE.Mesh(new THREE.PlaneGeometry(0.55, 0.55), mat);
         plate.position.set(side * (prof.width / 2 + 0.01), 0.62, -0.1);
@@ -205,49 +192,13 @@ export class CarMesh {
     // Shift the body so its wheel arches line up with the physics axles.
     this.body.position.z = (a - b) / 2;
 
-    this._addShadow(prof.width, prof.length, this.body.position.z);
-  }
-
-  _buildFromBlueprint(bp, spec, { paint, shadows }) {
-    const color = paint.color.getHex();
-    const clearcoat = new THREE.MeshPhysicalMaterial({ color, metalness: 0.25, roughness: 0.4, clearcoat: 1, clearcoatRoughness: 0.08, envMapIntensity: 0.45 });
-    const glass = new THREE.MeshPhysicalMaterial({ color: 0x15181b, metalness: 0.2, roughness: 0.08, clearcoat: 1, envMapIntensity: 0.4 });
-    const chrome = new THREE.MeshStandardMaterial({ color: 0xd0d4da, roughness: 0.2, metalness: 1 });
-    const built = buildBlueprintBody(bp, spec, { paint: clearcoat, glass, chrome, head: this.headMat, tail: this.tailMat });
-    built.group.traverse((o) => { if (o.isMesh) o.castShadow = shadows && o.castShadow; });
-    this.body.add(built.group);
-
-    // Gold multi-spoke centre-lock wheels with yellow calipers, wider at the back.
-    const style = {
-      rimMat: new THREE.MeshStandardMaterial({ color: 0x9c8455, metalness: 0.65, roughness: 0.38, envMapIntensity: 0.4 }),
-      barrelMat: new THREE.MeshStandardMaterial({ color: 0x6d6250, metalness: 0.8, roughness: 0.45, side: THREE.DoubleSide }),
-      nutMat: new THREE.MeshStandardMaterial({ color: 0x9aa0a6, metalness: 1, roughness: 0.3 }),
-      discMat: new THREE.MeshStandardMaterial({ color: 0x55585c, metalness: 0.8, roughness: 0.45 }),
-      caliperMat: new THREE.MeshStandardMaterial({ color: 0xf2c200, roughness: 0.35 }),
-    };
-    const a = spec.wheelbase * (1 - spec.frontWeight);
-    const b = spec.wheelbase * spec.frontWeight;
-    this.wheels = [];
-    const { front, rear } = built.wheels;
-    for (const [z, x, w, isFront] of [[a, front.x, front, true], [a, -front.x, front, true], [-b, rear.x, rear, false], [-b, -rear.x, rear, false]]) {
-      const pivot = new THREE.Group();
-      pivot.position.set(x, w.r, z);
-      const { spin, fixed } = buildWheel(w.r, w.w, Math.sign(x), style);
-      pivot.add(spin, fixed);
-      this.group.add(pivot);
-      this.wheels.push({ pivot, wheel: spin, front: isFront });
-    }
-    this._addShadow(built.width, built.length, 0);
-  }
-
-  _addShadow(width, length, z) {
     const shadow = new THREE.Mesh(
-      new THREE.PlaneGeometry(width * 1.5, length * 1.25),
+      new THREE.PlaneGeometry(prof.width * 1.5, prof.length * 1.25),
       new THREE.MeshBasicMaterial({ map: blobShadowTexture(), transparent: true, depthWrite: false }),
     );
     shadow.rotation.x = -Math.PI / 2;
     shadow.position.y = 0.12;
-    shadow.position.z = z;
+    shadow.position.z = this.body.position.z;
     shadow.renderOrder = 1;
     this.group.add(shadow);
   }
