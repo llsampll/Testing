@@ -77,11 +77,17 @@ for (const spec of CARS) {
       `${spec.name.padEnd(18)} 0-100 ${t100.toFixed(2)}s  vmax ${vmax.toFixed(0)} km/h  ` +
         `100-0 ${brakeAbs.toFixed(1)} m (no ABS ${brakeLocked.toFixed(1)} m)  skidpad ${latG.toFixed(2)} g`,
     );
-    assert.ok(t100 > 2.5 && t100 < 9, `0-100 ${t100}`);
-    assert.ok(vmax > 190 && vmax < 330, `top speed ${vmax}`);
-    assert.ok(brakeAbs > 25 && brakeAbs < 45, `braking ${brakeAbs}`);
+    // Road and GT cars vs. a 2004 F1 car (huge downforce, carbon brakes).
+    const f1 = spec.class === 'F1';
+    const [t0, t1] = f1 ? [2.2, 3.5] : [2.5, 9];
+    const [v0, v1] = f1 ? [320, 370] : [190, 330];
+    const [b0, b1] = f1 ? [14, 24] : [25, 45];
+    const [g0, g1] = f1 ? [2.2, 4] : [0.85, 1.8];
+    assert.ok(t100 > t0 && t100 < t1, `0-100 ${t100}`);
+    assert.ok(vmax > v0 && vmax < v1, `top speed ${vmax}`);
+    assert.ok(brakeAbs > b0 && brakeAbs < b1, `braking ${brakeAbs}`);
     assert.ok(brakeLocked >= brakeAbs - 1, 'ABS should not be worse than locking up');
-    assert.ok(latG > 0.85 && latG < 1.8, `lateral g ${latG}`);
+    assert.ok(latG > g0 && latG < g1, `lateral g ${latG}`);
   });
 }
 

@@ -208,7 +208,7 @@ export class CarMesh {
     this.group.add(inst.group);
     this.body = inst.body;
     this.wheels = inst.wheels;
-    this.tailMat = new THREE.MeshStandardMaterial(); // the model's lights are in its texture
+    this.tailMat = inst.tailMat ?? new THREE.MeshStandardMaterial(); // lights may be baked into the texture
     this._addShadow(model.size.x, model.size.z, (model.box.min.z + model.box.max.z) / 2);
   }
 

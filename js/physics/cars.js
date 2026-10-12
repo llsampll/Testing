@@ -144,6 +144,56 @@ export const CARS = [
     lsd: 0.4,
     rearGrip: 1.03,
   },
+  {
+    id: 'mp4-19b',
+    name: 'McLaren MP4-19B',
+    class: 'F1',
+    description: '2004 Formula 1 car: Mercedes FO110Q 3.0 V10, 870 hp at 18,500 rpm, 600 kg with driver. Brakes and corners like nothing else here.',
+    color: 0xc3c7cc,          // silver
+    // Published figures: 600 kg with driver, 3,100 mm wheelbase, 4,630 mm long,
+    // FO110Q 3.0 V10 870 hp @ 18,500 rpm, 7-speed sequential, Michelin tyres.
+    // McLaren never published aero, gear ratios or the rev limit: those are
+    // estimates typical of a 2004 F1 car.
+    mass: 600,
+    inertiaScale: 0.9,
+    wheelbase: 3.1,
+    frontWeight: 0.44,
+    cgHeight: 0.28,
+    trackWidth: 1.45,         // estimate
+    wheelRadius: 0.33,        // 13-inch rims, ~660 mm tyres
+    drive: 'RWD',
+    cylinders: 10,
+    body: 'gt3',              // procedural fallback if the 3D model can't load
+    // 3D model: "mclaren f1 mp4/19B lowpoly" by luis.adrian.villagrana (CC-BY-4.0),
+    // converted with tools/convert-mp4-19b.mjs. The model faces -z, hence the yaw.
+    model: {
+      url: 'models/mp4-19b.glb',
+      yaw: Math.PI,
+      wheels: ['Object_12', 'Object_13'],
+      paint: ['Body1Mtl'],
+      brakeLight: 'Light1Mtl',
+    },
+    // Grooved 2004 Michelins: huge mechanical grip, and far less grip lost as
+    // downforce piles load onto them than a road tyre would suffer.
+    tire: { mu: 1.75, peakSlipRatio: 0.08, peakSlipAngle: 0.1, shape: 1.5, fz0: 3000, loadSens: 0.08 },
+    torqueCurve: [[4000, 180], [8000, 260], [11000, 310], [14000, 345], [16000, 350], [18500, 335], [19200, 300]],
+    idleRpm: 4000,
+    redline: 19000,           // estimate
+    gears: [5.9, 4.4, 3.5, 2.85, 2.35, 1.95, 1.64], // estimate: ~100 km/h in 1st, ~360 km/h in 7th
+    finalDrive: 4.0,
+    reverseRatio: 6.0,
+    shiftTime: 0.04,
+    engineInertia: 0.05,      // tiny, fast-revving race V10
+    brakeTorque: 5000,        // carbon brakes
+    brakeBias: 0.57,
+    maxSteer: 0.4,
+    dragArea: 1.05,           // estimate
+    liftArea: 3.9,            // estimate: ~1,700 kg of downforce at 300 km/h
+    aeroBalance: 0.42,
+    rollBalance: 0.52,
+    lsd: 0.6,
+    rearGrip: 1.1,            // wider rear tyres
+  },
 ];
 
 export function getCar(id) {

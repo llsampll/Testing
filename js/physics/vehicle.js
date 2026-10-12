@@ -46,7 +46,7 @@ export class Vehicle {
   constructor(spec, assists = ASSIST_PRESETS.normal) {
     this.spec = spec;
     this.assists = { ...assists };
-    this.tire = new TireModel({ ...spec.tire, fz0: (spec.mass * G) / 4 });
+    this.tire = new TireModel({ fz0: (spec.mass * G) / 4, ...spec.tire });
 
     const L = spec.wheelbase;
     this.a = L * (1 - spec.frontWeight); // CG -> front axle
@@ -388,7 +388,7 @@ export class Vehicle {
     const axleTorque = engineTorque * ratio * DRIVETRAIN_EFFICIENCY;
     let drivenCount = 0;
     for (const w of this.wheels) if (w.driven) drivenCount++;
-    const reflectedInertia = clutchEngaged ? (ENGINE_INERTIA * ratio * ratio) / drivenCount : 0;
+    const reflectedInertia = clutchEngaged ? ((s.engineInertia ?? ENGINE_INERTIA) * ratio * ratio) / drivenCount : 0;
 
     // Limited slip: move torque from the faster driven wheel to the slower one.
     const driven = this.wheels.filter((w) => w.driven);

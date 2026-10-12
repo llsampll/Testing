@@ -50,6 +50,17 @@ shifts automatically, but you can still shift by hand.
   race car with downforce (Class A), and the **Spec E36**. The Spec E36 is
   an E36 spec racer with a 2.8 L straight-six and a 5-speed gearbox, drawn
   with a real 3D model (see below).
+- **McLaren MP4-19B** (class F1): the 2004 Formula 1 car, with its real
+  published figures:
+  - Mercedes-Benz FO110Q 3.0 L V10, 870 hp at 18,500 rpm
+  - 7-speed sequential gearbox
+  - 600 kg including the driver
+  - 3,100 mm wheelbase and 4,630 mm length
+
+  Downforce, drag, gear ratios and the rev limit were never published, so
+  those are estimates typical of a 2004 F1 car. In the game it does 0–100 km/h
+  in about 2.6 s, reaches about 342 km/h, stops from 100 km/h in about 19 m,
+  and pulls over 4 g in fast corners.
 - **3 circuits**: *Harbor Point GP* (2.9 km, fast and flowing), *Red
   Canyon Ring* (2.2 km, technical) and *Laguna Seca* (3.6 km with 54 m of
   elevation, traced from the real Monterey circuit map).
@@ -111,6 +122,15 @@ The source files are in `models/src/spec-e36/`.
 packs the model, its geometry and its palette texture into the single file the
 game loads. Your car keeps the white livery; rival cars are tinted with their
 team colour so you can tell them apart.
+
+**McLaren MP4-19B model:** "mclaren f1 mp4/19B lowpoly" by
+[luis.adrian.villagrana](https://sketchfab.com/luis.adrian.designs3D),
+licensed [CC BY 4.0](http://creativecommons.org/licenses/by/4.0/), from
+[Sketchfab](https://sketchfab.com/3d-models/mclaren-f1-mp419b-lowpoly-322d7355a54b409baaea32e915fb5f74).
+`tools/convert-mp4-19b.mjs` converts its old spec/gloss materials (which
+three.js no longer reads), simplifies the dense wheels and writes
+`models/mp4-19b.glb`. The model's tyre textures read Bridgestone, although the
+real car raced on Michelins.
 
 ## Physics
 

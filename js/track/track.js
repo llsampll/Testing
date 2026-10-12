@@ -481,7 +481,7 @@ export class Track {
       const kappa = Math.abs(this.lineCurvature[i]);
       // Downforce and dips add grip; crests take it away.
       const denom = kappa - grip * (k + this.crest[i]);
-      v[i] = denom <= 1e-5 ? 95 : Math.min(95, Math.sqrt((grip * g) / denom));
+      v[i] = denom <= 1e-5 ? 110 : Math.min(110, Math.sqrt((grip * g) / denom));
     }
     // Backward pass: make sure we can brake down to every corner speed
     // (uphill helps the brakes, downhill fights them).
