@@ -130,12 +130,21 @@
 
   <!-- Pause -->
   <div id="pause" class="screen overlay hidden">
-    <div class="panel">
-      <h1>Paused</h1>
-      <button class="btn primary" data-pause="resume">Resume</button>
-      <button class="btn" data-pause="reset">Reset Car to Track</button>
-      <button class="btn" data-pause="restart">Restart</button>
-      <button class="btn" data-pause="quit">Quit to Menu</button>
+    <div class="panel pause-panel">
+      <div class="pause-actions">
+        <h1>Paused</h1>
+        <button class="btn primary" data-pause="resume">Resume</button>
+        <button class="btn" data-pause="reset">Reset Car to Track</button>
+        <button class="btn" data-pause="restart">Restart</button>
+        <button class="btn" data-pause="quit">Quit to Menu</button>
+      </div>
+      <div class="pause-settings">
+        <div class="setting"><label>Controls</label><div class="seg" data-setting="controls">
+          <button data-value="tilt">Tilt + Pedals</button><button data-value="tilt-auto">Tilt + Auto Gas</button><button data-value="buttons">Buttons</button></div></div>
+        <div class="setting" id="pause-sensitivity"><label>Tilt Sensitivity</label><div class="seg" data-setting="sensitivity">
+          <button data-value="0.75">Low</button><button data-value="1">Mid</button><button data-value="1.4">High</button></div></div>
+        <p class="hint">Changes apply straight away and are saved for next time.</p>
+      </div>
     </div>
   </div>
 

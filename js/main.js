@@ -191,6 +191,8 @@ for (const seg of document.querySelectorAll('.seg')) {
     settings[seg.dataset.setting] = b.dataset.value;
     save();
     syncSelection();
+    // Controls can be changed from the pause menu mid-race; apply them straight away.
+    if (game.running && (seg.dataset.setting === 'controls' || seg.dataset.setting === 'sensitivity')) applyControls();
   });
 }
 
@@ -237,6 +239,18 @@ function show(id, on) {
   $(id).classList.toggle('hidden', !on);
 }
 
+/** Point the input system and on-screen controls at the chosen control scheme. */
+function applyControls() {
+  // iOS only grants motion access from a tap, which this always runs inside.
+  if (settings.controls !== 'buttons') input.requestTiltPermission();
+  input.scheme = settings.controls;
+  input.tiltSensitivity = parseFloat(settings.sensitivity);
+  input.releaseAll();
+  $('#touch').className = `touch scheme-${settings.controls}${isTouch ? '' : ' no-touch'}`;
+  // Sensitivity only matters for tilt steering.
+  $('#pause-sensitivity').style.display = settings.controls === 'buttons' ? 'none' : '';
+}
+
 async function startRace() {
   audio.enabled = settings.sound === 'on';
   audio.start();
@@ -250,10 +264,7 @@ async function startRace() {
       /* not supported (e.g. iOS Safari) */
     }
   }
-  input.scheme = settings.controls;
-  input.tiltSensitivity = parseFloat(settings.sensitivity);
-  const touch = $('#touch');
-  touch.className = `touch scheme-${settings.controls}${isTouch ? '' : ' no-touch'}`;
+  applyControls();
 
   show('#menu', false);
   show('#start-btn', false);
